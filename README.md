@@ -29,11 +29,49 @@ Why? Meta is winding down Quest 2 support (last features in Horizon OS v2.13, Ma
 
 ## 📸 Screenshots
 
-The Apps screen, list view and tiles view. These are rendered from the app's own widget tests with made-up app data, so you can see what it looks like without a headset plugged in.
+Every screen, rendered from the app's own widget tests with Lorem Ipsum placeholder data, so you can see what it looks like without a headset plugged in. No real data in any of them.
+
+### Home
+
+![Home screen](assets/screenshots/home.png)
+
+### Devices
+
+![Devices screen](assets/screenshots/devices.png)
+
+### Apps, list and tiles
 
 ![Apps screen, list view](assets/screenshots/apps-list.png)
 
 ![Apps screen, tiles view](assets/screenshots/apps-tiles.png)
+
+### Files
+
+![Files screen](assets/screenshots/files.png)
+
+### Device and settings
+
+![Device and settings screen](assets/screenshots/device-settings.png)
+
+### Mirror
+
+![Mirror screen](assets/screenshots/mirror.png)
+
+### PC VR (WiVRn)
+
+![PC VR screen](assets/screenshots/pc-vr.png)
+
+### Logs
+
+![Logs screen](assets/screenshots/logs.png)
+
+### Help
+
+![Help screen](assets/screenshots/help.png)
+
+### Setup
+
+![Setup screen](assets/screenshots/setup.png)
 
 ## ⬇️ Download
 

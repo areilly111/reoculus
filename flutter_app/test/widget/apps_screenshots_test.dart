@@ -1,7 +1,7 @@
-// Screenshot goldens for the README: the Apps screen rendered with
-// fake (invented) data, so the GitHub page can show the app without
-// a real headset and without any real user data. Nothing here is a
-// real serial, IP, or firmware value.
+// Screenshot goldens for the README: every screen rendered with
+// Lorem Ipsum placeholder data, so the GitHub page can show the app
+// without a real headset and without any real user data. Nothing here
+// is a real serial, IP, firmware value, app, file, or log line.
 // Regenerate with:
 //   flutter test --update-goldens test/widget/apps_screenshots_test.dart
 // The PNGs land in test/widget/goldens/; the README copies live in
@@ -14,6 +14,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quest_companion/models.dart';
 import 'package:quest_companion/screens/apps_files.dart';
+import 'package:quest_companion/screens/device_mirror_logs_setup.dart';
+import 'package:quest_companion/screens/help.dart';
+import 'package:quest_companion/screens/home_devices.dart';
+import 'package:quest_companion/screens/pc_vr.dart';
 import 'package:quest_companion/services/app_state.dart';
 import 'package:quest_companion/services/backend.dart';
 import 'package:quest_companion/theme.dart';
@@ -25,21 +29,66 @@ const _device = QuestDevice(
   transport: 'usb',
 );
 
-// Fake apps, all invented: same set as
-// scripts/screenshot-mock-adb.sh, so the README shots and the
-// (unused) live mock agree.
+const _deviceInfo = DeviceInfo(
+  model: 'Quest 2',
+  serial: 'TESTSERIAL000001',
+  firmware: 'Lorem ipsum 1.0.0',
+  androidVersion: '14',
+  resolution: '3664x1920',
+  cpuAbi: 'arm64-v8a',
+  batteryLevel: 87,
+  batteryTempC: 31,
+  storageUsedGb: 86,
+  storageTotalGb: 112,
+  charging: true,
+);
+
+// Fake apps, all Lorem Ipsum: the point is placeholder text, not
+// pretending to be real apps.
 const _apps = <QuestApp>[
-  QuestApp(package: 'com.beatgames.beatsaber', label: 'Beat Saber', version: '1.40.8', system: false, apkSizeBytes: 1280000000, totalSizeBytes: 3460000000),
-  QuestApp(package: 'com.StressLevelZero.BONELAB', label: 'BONELAB', version: '1.2974.57485', system: false, apkSizeBytes: 2650000000, totalSizeBytes: 10700000000),
-  QuestApp(package: 'com.Icosa.OpenBrush', label: 'Open Brush', version: '2.31.0', system: false, apkSizeBytes: 190000000, totalSizeBytes: 235000000),
-  QuestApp(package: 'xyz.morrowind.tes3mpvr', label: 'TES3MP VR', version: '0.47.0', system: false, apkSizeBytes: 514000000, totalSizeBytes: 984000000),
-  QuestApp(package: 'com.teambeef.questzdoom', label: 'QuestZDoom', version: '1.4.8', system: false, apkSizeBytes: 420000000, totalSizeBytes: 432000000),
-  QuestApp(package: 'com.itsmattkc.questhomeswitcher', label: 'Quest Home Switcher', version: '1.2.0', system: false, apkSizeBytes: 12000000, totalSizeBytes: 20000000),
-  QuestApp(package: 'com.deovr', label: 'DeoVR', version: '1.16', system: false, apkSizeBytes: 48000000, totalSizeBytes: 63000000),
+  QuestApp(package: 'com.lorem.ipsum', label: 'Lorem Ipsum', version: '1.0.0', system: false, apkSizeBytes: 123456789, totalSizeBytes: 987654321),
+  QuestApp(package: 'com.dolor.sit', label: 'Dolor Sit Amet', version: '2.3.1', system: false, apkSizeBytes: 234567890, totalSizeBytes: 876543210),
+  QuestApp(package: 'com.consectetur.adipiscing', label: 'Consectetur Adipiscing', version: '0.9.4', system: false, apkSizeBytes: 34567890, totalSizeBytes: 123456789),
+  QuestApp(package: 'com.sed.do', label: 'Sed Do Eiusmod', version: '3.1.0', system: false, apkSizeBytes: 456789012, totalSizeBytes: 765432109),
+  QuestApp(package: 'com.tempor.incididunt', label: 'Tempor Incididunt', version: '1.2.3', system: false, apkSizeBytes: 56789012, totalSizeBytes: 234567890),
+  QuestApp(package: 'com.ut.labore', label: 'Ut Labore Et', version: '4.0.0', system: false, apkSizeBytes: 67890123, totalSizeBytes: 345678901),
+  QuestApp(package: 'com.dolore.magna', label: 'Dolore Magna Aliqua', version: '0.1.0', system: false, apkSizeBytes: 78901234, totalSizeBytes: 456789012),
 ];
 
-/// Answers only the calls the Apps screen makes; anything else is
-/// an error, so a screen change that needs a new backend call fails
+const _files = <QuestFile>[
+  QuestFile(name: 'Lorem ipsum', path: '/sdcard/Lorem ipsum', isDir: true, size: 0),
+  QuestFile(name: 'Dolor sit amet', path: '/sdcard/Dolor sit amet', isDir: true, size: 0),
+  QuestFile(name: 'Consectetur', path: '/sdcard/Consectetur', isDir: true, size: 0),
+  QuestFile(name: 'Lorem ipsum dolor.txt', path: '/sdcard/Lorem ipsum dolor.txt', isDir: false, size: 123456),
+  QuestFile(name: 'Sed do eiusmod.mp4', path: '/sdcard/Sed do eiusmod.mp4', isDir: false, size: 234567890),
+  QuestFile(name: 'Ut labore.pdf', path: '/sdcard/Ut labore.pdf', isDir: false, size: 3456789),
+  QuestFile(name: 'Dolore magna.png', path: '/sdcard/Dolore magna.png', isDir: false, size: 4567890),
+];
+
+const _gallery = <GalleryEntry>[
+  GalleryEntry(name: 'Lorem ipsum.png', path: '/sdcard/Lorem ipsum.png', kind: 'screenshot', modified: 'Lorem ipsum', sizeBytes: 1234567),
+  GalleryEntry(name: 'Dolor sit amet.mp4', path: '/sdcard/Dolor sit amet.mp4', kind: 'recording', modified: 'Dolor sit amet', sizeBytes: 234567890),
+  GalleryEntry(name: 'Consectetur.mp4', path: '/sdcard/Consectetur.mp4', kind: 'recording', modified: 'Consectetur', sizeBytes: 345678901),
+];
+
+const _logLines = <String>[
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+  'Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+  'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.',
+  'Duis aute irure dolor in reprehenderit in voluptate velit esse.',
+  'Excepteur sint occaecat cupidatat non proident, sunt in culpa.',
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+  'Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+  'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.',
+];
+
+const _deviceBackups = <DeviceBackupEntry>[
+  DeviceBackupEntry(serial: 'TESTSERIAL000001', backupDate: '2026-01-01 12:00', path: '/sdcard/LoremIpsum/lorem.zip', totalSizeBytes: 123456789, appCount: 7),
+  DeviceBackupEntry(serial: 'TESTSERIAL000001', backupDate: '2026-01-02 12:00', path: '/sdcard/LoremIpsum/ipsum.zip', totalSizeBytes: 234567890, appCount: 7),
+];
+
+/// Answers the calls the screens make at load; anything else is an
+/// error, so a screen change that needs a new backend call fails
 /// loudly here instead of silently rendering an empty screen.
 class FakeBackend implements BackendService {
   @override
@@ -48,10 +97,59 @@ class FakeBackend implements BackendService {
     if (name == #listApps) return Future<List<QuestApp>>.value(_apps);
     if (name == #listLibrary) return Future<List<LibraryEntry>>.value(const []);
     if (name == #listDevices) return Future<List<QuestDevice>>.value(const [_device]);
-    if (name == #deviceInfo) return Future<DeviceInfo?>.value(null);
+    if (name == #deviceInfo) return Future<DeviceInfo?>.value(_deviceInfo);
     if (name == #appIcon) return Future<AppIcon?>.value(null);
     if (name == #label) return 'Fake backend';
     if (name == #scrcpyAvailable) return Future<bool>.value(false);
+    if (name == #listFiles) return Future<List<QuestFile>>.value(_files);
+    if (name == #listGallery) return Future<List<GalleryEntry>>.value(_gallery);
+    if (name == #logLines) return Future<List<String>>.value(_logLines);
+    if (name == #rootStatus) {
+      return Future<RootStatus>.value(const RootStatus(
+        rooted: true, method: 'Magisk', suPresent: true, magiskPresent: true, singularityPresent: false));
+    }
+    if (name == #controllers) {
+      return Future<ControllersInfo>.value(const ControllersInfo(
+        names: ['Lorem Controller', 'Ipsum Controller'],
+        note: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.'));
+    }
+    if (name == #updateBlockStatus) {
+      return Future<UpdateBlockStatus?>.value(const UpdateBlockStatus(
+        blocked: false, rooted: true, disabledPackages: []));
+    }
+    if (name == #listDeviceBackups) return Future<List<DeviceBackupEntry>>.value(_deviceBackups);
+    if (name == #wivrnSetupState) {
+      return Future<Map<String, dynamic>>.value({
+        'client_version': '26.9', 'declined': false, 'server_installed': true,
+      });
+    }
+    if (name == #wivrnDetect) {
+      return Future<Map<String, dynamic>>.value({
+        'installed': true, 'kind': 'flatpak', 'server_version': '26.9',
+        'avahi_active': true, 'pipewire': true, 'port': 9757,
+        'note': 'Lorem ipsum dolor sit amet.',
+      });
+    }
+    if (name == #wivrnStatus) {
+      return Future<Map<String, dynamic>>.value({
+        'running': true, 'port_listening': true, 'active_runtime_is_wivrn': true,
+        'pipewire_nodes': true,
+        'log': 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\nSed do eiusmod tempor incididunt.',
+      });
+    }
+    if (name == #wivrnHeadsetClient) return Future<String?>.value('26.9');
+    if (name == #setupWifi) return Future<WifiSetupResult?>.value(null);
+    if (name == #wifiReconnect) return Future<List<String>>.value(const []);
+    if (name == #debugInfo) {
+      return Future<DebugInfo?>.value(const DebugInfo(
+        questctlVersion: 'Lorem ipsum',
+        adbVersion: 'Lorem ipsum',
+        backendPath: 'Fake backend',
+        scrcpyAvailable: false,
+        root: RootStatus(rooted: true, method: 'Magisk', suPresent: true, magiskPresent: true, singularityPresent: false),
+        device: _deviceInfo,
+      ));
+    }
     return super.noSuchMethod(invocation);
   }
 }
@@ -91,32 +189,98 @@ Future<void> _loadFonts() async {
   }
 }
 
-Future<void> _pumpApps(WidgetTester tester, {bool tiles = false}) async {
+Future<void> _pump(WidgetTester tester, AppState state, Widget screen) async {
   tester.view.physicalSize = const Size(1280, 720);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.pumpWidget(MaterialApp(
+    theme: AppTheme.themeFor(DesignDirection.vrNeon),
+    home: Scaffold(body: screen),
+  ));
+  await tester.pumpAndSettle();
+}
+
+AppState _state() {
   final state = AppState(backend: FakeBackend());
   state.selectedDevice = _device;
   state.devices = [_device];
-  if (tiles) state.setAppsTiles(true);
-  await tester.pumpWidget(MaterialApp(
-    theme: AppTheme.themeFor(DesignDirection.vrNeon),
-    home: Scaffold(body: AppsScreen(state: state)),
-  ));
-  await tester.pumpAndSettle();
+  // Normally refreshDevices fills this in from the backend; the
+  // golden pumps set the device directly, so set it here too.
+  state.deviceInfo = _deviceInfo;
+  state.log('Lorem ipsum dolor sit amet');
+  state.log('Dolor sit amet, consectetur');
+  state.log('Sed do eiusmod tempor');
+  return state;
 }
 
 void main() {
   setUpAll(_loadFonts);
 
+  testWidgets('Home screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, HomeScreen(state: state, goTo: (_) {}));
+    await expectLater(find.byType(HomeScreen), matchesGoldenFile('goldens/home.png'));
+  });
+
+  testWidgets('Devices screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, DevicesScreen(state: state));
+    await expectLater(find.byType(DevicesScreen), matchesGoldenFile('goldens/devices.png'));
+  });
+
   testWidgets('Apps screen, list view', (WidgetTester tester) async {
-    await _pumpApps(tester);
+    final state = _state();
+    await _pump(tester, state, AppsScreen(state: state));
     await expectLater(find.byType(AppsScreen), matchesGoldenFile('goldens/apps-list.png'));
   });
 
   testWidgets('Apps screen, tiles view', (WidgetTester tester) async {
-    await _pumpApps(tester, tiles: true);
+    final state = _state();
+    state.setAppsTiles(true);
+    await _pump(tester, state, AppsScreen(state: state));
     await expectLater(find.byType(AppsScreen), matchesGoldenFile('goldens/apps-tiles.png'));
+  });
+
+  testWidgets('Files screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, FilesScreen(state: state));
+    await expectLater(find.byType(FilesScreen), matchesGoldenFile('goldens/files.png'));
+  });
+
+  testWidgets('Device and Settings screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, DeviceSettingsScreen(state: state));
+    await expectLater(find.byType(DeviceSettingsScreen), matchesGoldenFile('goldens/device-settings.png'));
+  });
+
+  testWidgets('Mirror screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, MirrorScreen(state: state));
+    await expectLater(find.byType(MirrorScreen), matchesGoldenFile('goldens/mirror.png'));
+  });
+
+  testWidgets('PC VR screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, PcVrScreen(state: state));
+    await expectLater(find.byType(PcVrScreen), matchesGoldenFile('goldens/pc-vr.png'));
+  });
+
+  testWidgets('Logs screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, LogsScreen(state: state));
+    await expectLater(find.byType(LogsScreen), matchesGoldenFile('goldens/logs.png'));
+  });
+
+  testWidgets('Help screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, HelpScreen(state: state));
+    await expectLater(find.byType(HelpScreen), matchesGoldenFile('goldens/help.png'));
+  });
+
+  testWidgets('Setup screen', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, SetupScreen(state: state));
+    await expectLater(find.byType(SetupScreen), matchesGoldenFile('goldens/setup.png'));
   });
 }

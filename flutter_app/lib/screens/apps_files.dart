@@ -168,7 +168,6 @@ class _AppsScreenState extends State<AppsScreen> {
                                           ),
                                           const SizedBox(height: 8),
                                           Text(a.label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                          Text(a.package, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
                                           Text('Version ${a.version}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
                                           if (_sizeText(a).isNotEmpty) Text(_sizeText(a), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
                                           const Spacer(),
