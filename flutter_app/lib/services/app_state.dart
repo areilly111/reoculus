@@ -13,7 +13,12 @@ import 'backend.dart';
 // Quest 2 first: every feature targets the Quest 2 (Android 14,
 // Horizon OS), offline, with no Meta account.
 class AppState extends ChangeNotifier {
-  BackendService _backend = RealBackend('../backend/target/debug/questctl');
+  BackendService _backend;
+
+  /// Production uses the real backend. Tests pass a fake: the UI
+  /// never talks to a headset except through this one object.
+  AppState({BackendService? backend})
+      : _backend = backend ?? RealBackend('../backend/target/debug/questctl');
   String? backendPath; // null = auto-detect
   String? backendError; // set when Real mode cannot find/run questctl
   // PICKED 2026-11-12: C Dark VR Neon, blue instead of purple .

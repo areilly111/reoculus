@@ -1,5 +1,7 @@
 # 🥽 ReOculus
 
+![ReOculus banner](assets/banner.png)
+
 **Your Quest 2, on Linux, without the nonsense. No ads. No account. No telemetry. Nothing leaves your computer.**
 
 ReOculus is a companion app for the Meta Quest 2 (and 3) that replaces the Meta PC app and SideQuest for everyday stuff: manage your apps, back them up, poke around the files, mirror the screen, and run PC VR on Linux with WiVRn. All over USB or Wi-Fi.
@@ -8,7 +10,7 @@ Why? Meta is winding down Quest 2 support (last features in Horizon OS v2.13, Ma
 
 > Yes, I used AI to help design and code this. It works on my own Quest 2, every day. If it breaks for you, tell me and we will fix it.
 
-[⬇️ Download](#-download) · [✨ What it does](#-what-it-does) · [🚀 First run](#-first-run) · [🖥️ PC VR](#️-pc-vr) · [🔧 Build it yourself](#-build-it-yourself) · [🙅 What's not in here (yet)](#-whats-not-in-here-yet) · [📋 Status](#-status) · [⚖️ License and credits](#️-license-and-credits)
+[⬇️ Download](#-download) · [✨ What it does](#-what-it-does) · [📸 Screenshots](#-screenshots) · [🚀 First run](#-first-run) · [🖥️ PC VR](#️-pc-vr) · [🔧 Build it yourself](#-build-it-yourself) · [🙅 What's not in here (yet)](#-whats-not-in-here-yet) · [📋 Status](#-status) · [⚖️ License and credits](#️-license-and-credits)
 
 ![Linux](https://img.shields.io/badge/Linux-AppImage-blue) ![Android](https://img.shields.io/badge/Android-APK-green) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow) ![WiVRn](https://img.shields.io/badge/PC%20VR-WiVRn%2026.9-purple)
 
@@ -24,6 +26,14 @@ Why? Meta is winding down Quest 2 support (last features in Horizon OS v2.13, Ma
 | 🖥️ | **PC VR** | WiVRn 26.9 wrapper: start/stop the server, encoder and codec picker, headset client version check. The server rides along inside the AppImage, and the headset app installs itself on first connect. |
 | 📚 | **Library** | One folder on your computer holds every backup and imported APK. |
 | 📖 | **Offline help** | The whole help section works with no internet. |
+
+## 📸 Screenshots
+
+The Apps screen, list view and tiles view. These are rendered from the app's own widget tests with made-up app data, so you can see what it looks like without a headset plugged in.
+
+![Apps screen, list view](assets/screenshots/apps-list.png)
+
+![Apps screen, tiles view](assets/screenshots/apps-tiles.png)
 
 ## ⬇️ Download
 

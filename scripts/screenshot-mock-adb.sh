@@ -43,7 +43,9 @@ DUMPSYS='  Package [com.beatgames.beatsaber] (1111111):
   Package [com.android.settings] (8888888):
     versionName=14
   Package [com.oculus.vrshell] (9999999):
-    versionName=14'
+    versionName=14
+  Package [org.meumeu.wivrn] (1010101):
+    versionName=26.9'
 
 LS_L='-rw-r--r-- 1 system system 1280000000 2026-11-10 09:30 /data/app/~~a1==/com.beatgames.beatsaber-x1==/base.apk
 -rw-r--r-- 1 system system 2650000000 2026-11-09 14:12 /data/app/~~b2==/com.StressLevelZero.BONELAB-x2==/base.apk
@@ -106,6 +108,9 @@ case "$1" in
       "pm list packages -3") printf '%s\n' "$APPS_3" ;;
       "pm list packages -f -3"|"pm list packages -3 -f") printf '%s\n' "$APPS_F" | grep -v '/system/app/' ;;
       "dumpsys package packages") printf '%s\n' "$DUMPSYS" ;;
+      "dumpsys package org.meumeu.wivrn"|"dumpsys package org.meumeu.wivrn.github"|"dumpsys package org.meumeu.wivrn | grep versionName"|"dumpsys package org.meumeu.wivrn.github | grep versionName")
+        echo "versionName=26.9"
+        ;;
       "for p in"*) printf '%s\n' "$LS_L" ;;
       "su -c \"du -sb /data/data/*\"") printf '%s\n' "$DU_DATA" ;;
       "du -sb /sdcard/Android/obb/*") printf '%s\n' "$DU_OBB" ;;
@@ -166,6 +171,7 @@ case "$1" in
   connect) echo "connected to $2" ;;
   disconnect) echo "disconnected $2" ;;
   reboot) : ;;
+  reverse) : ;;
   tcpip) echo "restarting in TCP mode port: $2" ;;
   logcat)
     echo "11-12 05:00:00.000  1234  1234 I Test    hello logcat"
