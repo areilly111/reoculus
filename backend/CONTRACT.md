@@ -270,3 +270,56 @@ recorded here with a date and a note in both agents' READMEs.
   `settings profile apply --profile <name>` (UI profile names mapped to
   the backend built-ins), `devices connect-wifi` for pairing, and file
   delete wired with a confirm dialog.
+- **2026-11-12 — homes, snapshots, health, Singularity wizard, APK analyzer, multi-headset (0.2.17).**
+  Added `homes list/current/set/open-settings --serial X` (home apps from
+  `pm query-activities`, the active one from `pm resolve-activity`;
+  switching uses `cmd package set-home-activity` and verifies the
+  switch landed, otherwise the UI opens the headset's Home settings);
+  `snapshot create/list/restore/delete` (a device backup plus a
+  `snapshot.json` with the name and the active settings profile, which
+  the restore re-applies); `devices health --serial X` (battery,
+  storage, uptime, last backup); `singularity preflight/download/
+  install/verify --serial X` (preflight checks, download of the
+  author's latest release from GitHub with aapt + checksum
+  verification when the release publishes one, install, root
+  verification; Singularity itself is never bundled and the rooting
+  happens in the headset); `apps analyze --apk <path>` (badging +
+  native libs + size breakdown + file SHA-256 + signer SHA-256 via
+  apksigner, when Java is available); and per-headset WiVRn declines
+  (`wivrn decline/undecline --serial X`; the old shared file is still
+  honored as a legacy fallback). The UI saves settings profiles per
+  headset (`~/.config/quest-companion/device-profiles.json`) and
+  applies the saved profile when switching headsets.
+
+### Homes (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `homes list --serial X` | `{"homes": [{"component": "pkg/Activity", "package", "label", "is_current"}]}` (current first). Labels come from the installed-app list. |
+| `homes current --serial X` | `{"current": "pkg/Activity"}` or `{"current": null}` when the headset has no home picked yet. |
+| `homes set --serial X --component <pkg/Activity>` | `cmd package set-home-activity`, then verifies with `resolve-activity`. Fails with a clear error when the build refuses it (the UI then offers the Home settings screen). |
+| `homes open-settings --serial X` | Opens `android.settings.HOME_SETTINGS` on the headset (the system home picker). |
+
+### Snapshots (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `snapshot create --serial X --name <name> [--profile <name>]` | A device backup plus `snapshot.json` (name, serial, model, firmware, profile). Same honest limit as a device backup: APKs are not copied, apps reinstall from their library backups. |
+| `snapshot list` | `{"snapshots": [{"serial", "name", "created_date", "path", "total_size_bytes", "app_count"}]}`, newest first. |
+| `snapshot restore --serial X --snapshot <path> [--dry-run] [--confirm]` | The device restore, then the recorded settings profile is re-applied. A real restore needs `--confirm`. |
+| `snapshot delete --snapshot <path>` | Local files only, and only inside the backup root. |
+
+### Singularity wizard (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `singularity preflight --serial X` | `{"checks": [{"name", "ok", "detail"}], "ok", "summary"}`. Checks: Quest 2, battery 50%+, not already rooted, Singularity not installed, 500 MB free, firmware (the known-good build is named in the detail). |
+| `singularity download` | Fetches `api.github.com/repos/Lumince/singularity/releases/latest`, downloads the .apk asset to `~/.cache/quest-companion/singularity/`, verifies it is a real APK (aapt badging) and, when the release publishes a checksum file, verifies the SHA-256 against it. Returns `{"version", "file", "size_bytes", "sha256", "package", "label", "verification"}`. |
+| `singularity install --serial X` | Installs the newest downloaded APK over ADB. |
+| `singularity verify --serial X` | Root status after the user pressed Root Now in Singularity; fails with a plain message when root is not on yet. |
+
+### APK analyzer (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `apps analyze --apk <path>` | `{"path", "file", "file_size_bytes", "sha256", "package", "label", "version_name", "version_code", "min_sdk", "target_sdk", "permissions", "features", "abis", "is_64_bit", "native_lib_bytes", "native_lib_count", "dex_bytes", "assets_bytes", "res_bytes", "signature_sha256", "signature_checked", "notes"}`. A `.apks` / `.xapk` bundle is analyzed through its largest inner APK (noted). The signer check needs apksigner + Java; when Java is missing the note says so instead of claiming the signature is bad. |

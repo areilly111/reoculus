@@ -18,6 +18,7 @@ import 'package:quest_companion/screens/device_mirror_logs_setup.dart';
 import 'package:quest_companion/screens/help.dart';
 import 'package:quest_companion/screens/home_devices.dart';
 import 'package:quest_companion/screens/pc_vr.dart';
+import 'package:quest_companion/screens/singularity_wizard.dart';
 import 'package:quest_companion/services/app_state.dart';
 import 'package:quest_companion/services/backend.dart';
 import 'package:quest_companion/theme.dart';
@@ -87,6 +88,36 @@ const _deviceBackups = <DeviceBackupEntry>[
   DeviceBackupEntry(serial: 'TESTSERIAL000001', backupDate: '2026-01-02 12:00', path: '/sdcard/LoremIpsum/ipsum.zip', totalSizeBytes: 234567890, appCount: 7),
 ];
 
+const _homes = <HomeEntry>[
+  HomeEntry(component: 'com.lorem.ipsum/.HomeActivity', package: 'com.lorem.ipsum', label: 'Lorem Ipsum Home', isCurrent: true),
+  HomeEntry(component: 'com.dolor.sit/.MainActivity', package: 'com.dolor.sit', label: 'Dolor Sit Amet Home', isCurrent: false),
+];
+
+const _snapshots = <SnapshotEntry>[
+  SnapshotEntry(serial: 'TESTSERIAL000001', name: 'Before rooting', createdDate: '2026-01-01 12:00', path: '/sdcard/LoremIpsum/snap1', totalSizeBytes: 123456789, appCount: 7),
+  SnapshotEntry(serial: 'TESTSERIAL000001', name: 'Lorem ipsum', createdDate: '2026-01-02 12:00', path: '/sdcard/LoremIpsum/snap2', totalSizeBytes: 234567890, appCount: 7),
+];
+
+const _health = HealthInfo(
+  serial: 'TESTSERIAL000001',
+  model: 'Quest 2',
+  firmware: 'Lorem ipsum 1.0.0',
+  batteryLevel: 87,
+  batteryTempC: 31,
+  batteryVoltageMv: 4123,
+  batteryHealth: 'good',
+  batteryStatus: 'discharging',
+  charging: true,
+  sdcardTotalKb: 117440512,
+  sdcardUsedKb: 90177536,
+  sdcardFreeKb: 27262976,
+  dataTotalKb: 117440512,
+  dataUsedKb: 41943040,
+  dataFreeKb: 75563072,
+  uptime: '1 day 2 hours',
+  lastBackup: '2026-01-01 12:00',
+);
+
 /// Answers the calls the screens make at load; anything else is an
 /// error, so a screen change that needs a new backend call fails
 /// loudly here instead of silently rendering an empty screen.
@@ -118,6 +149,57 @@ class FakeBackend implements BackendService {
         blocked: false, rooted: true, disabledPackages: []));
     }
     if (name == #listDeviceBackups) return Future<List<DeviceBackupEntry>>.value(_deviceBackups);
+    if (name == #homesList) return Future<List<HomeEntry>>.value(_homes);
+    if (name == #homesCurrent) return Future<String?>.value('com.lorem.ipsum/.HomeActivity');
+    if (name == #homesSet) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home switched.'));
+    if (name == #homesOpenSettings) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home settings are open on the headset.'));
+    if (name == #snapshotList) return Future<List<SnapshotEntry>>.value(_snapshots);
+    if (name == #snapshotCreate) return Future<Map<String, dynamic>?>.value({'ok': true, 'name': 'Lorem ipsum'});
+    if (name == #snapshotRestore) {
+      return Future<RestoreReport?>.value(const RestoreReport(
+        package: 'com.lorem.ipsum', backupPath: '/sdcard/LoremIpsum/snap1', dryRun: true, ok: true,
+        steps: [StepResult(item: 'Lorem ipsum', message: 'dolor sit amet', ok: true)],
+      ));
+    }
+    if (name == #snapshotDelete) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Deleted.'));
+    if (name == #deviceHealth) return Future<HealthInfo?>.value(_health);
+    if (name == #singularityPreflight) {
+      return Future<SingularityPreflight?>.value(const SingularityPreflight(
+        ok: true, summary: 'Lorem ipsum dolor sit amet.',
+        checks: [
+          PreflightCheck(name: 'Lorem ipsum', detail: 'dolor sit amet', ok: true),
+          PreflightCheck(name: 'Consectetur adipiscing', detail: 'sed do eiusmod', ok: true),
+        ],
+      ));
+    }
+    if (name == #singularityDownload) {
+      return Future<Map<String, dynamic>>.value({
+        'ok': true, 'version': '1.0.8', 'file': '/tmp/Singularity.apk', 'size_bytes': 12345678,
+        'sha256': '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        'package': 'com.lorem.singularity', 'label': 'Lorem Ipsum',
+        'verification': 'Lorem ipsum dolor sit amet.',
+      });
+    }
+    if (name == #singularityInstall) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Singularity installed on the headset.'));
+    if (name == #singularityVerify) {
+      return Future<RootStatus>.value(const RootStatus(
+        rooted: true, method: 'Magisk', suPresent: true, magiskPresent: true, singularityPresent: true));
+    }
+    if (name == #analyzeApk) {
+      return Future<ApkAnalysis?>.value(const ApkAnalysis(
+        path: '/tmp/lorem.apk', file: 'lorem.apk', fileSizeBytes: 123456789,
+        sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        package: 'com.lorem.ipsum', label: 'Lorem Ipsum', versionName: '1.0.0', versionCode: 1,
+        minSdk: 29, targetSdk: 33,
+        permissions: ['android.permission.INTERNET'], features: ['android.hardware.vr.headtracking'],
+        abis: ['arm64-v8a'], is64Bit: true, signatureChecked: true,
+        nativeLibBytes: 12345678, nativeLibCount: 3, dexBytes: 12345678, assetsBytes: 1234567, resBytes: 1234567,
+        signatureSha256: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+        notes: ['Lorem ipsum dolor sit amet.'],
+      ));
+    }
+    if (name == #wivrnDecline) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Noted.'));
+    if (name == #wivrnUndecline) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Decline cleared.'));
     if (name == #wivrnSetupState) {
       return Future<Map<String, dynamic>>.value({
         'client_version': '26.9', 'declined': false, 'server_installed': true,
@@ -292,5 +374,11 @@ void main() {
     final state = _state();
     await _pump(tester, state, SetupScreen(state: state));
     await expectLater(find.byType(SetupScreen), matchesGoldenFile('goldens/setup.png'));
+  });
+
+  testWidgets('Singularity wizard', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, SingularityWizardScreen(state: state));
+    await expectLater(find.byType(SingularityWizardScreen), matchesGoldenFile('goldens/singularity-wizard.png'));
   });
 }

@@ -60,8 +60,22 @@ abstract class BackendService {
   Future<BackendResult> wivrnInstallClient(String serial);
   Future<BackendResult> wivrnSetupUsb(String serial);
   Future<BackendResult> wivrnInstallServer();
-  Future<BackendResult> wivrnDecline();
-  Future<BackendResult> wivrnUndecline();
+  Future<BackendResult> wivrnDecline(String serial);
+  Future<BackendResult> wivrnUndecline(String serial);
+  Future<List<HomeEntry>> homesList(String serial);
+  Future<String?> homesCurrent(String serial);
+  Future<BackendResult> homesSet(String serial, String component);
+  Future<BackendResult> homesOpenSettings(String serial);
+  Future<SingularityPreflight?> singularityPreflight(String serial);
+  Future<Map<String, dynamic>> singularityDownload();
+  Future<BackendResult> singularityInstall(String serial);
+  Future<RootStatus> singularityVerify(String serial);
+  Future<Map<String, dynamic>?> snapshotCreate(String serial, String name, {String? profile});
+  Future<List<SnapshotEntry>> snapshotList();
+  Future<RestoreReport?> snapshotRestore(String serial, String path, {bool dryRun = false, bool confirm = false});
+  Future<BackendResult> snapshotDelete(String path);
+  Future<HealthInfo?> deviceHealth(String serial);
+  Future<ApkAnalysis?> analyzeApk(String path);
   Future<ShellResult?> runShell(String serial, String command);
   Future<DebugInfo?> debugInfo(String serial);
   Future<RootStatus> rootStatus(String serial);
@@ -432,9 +446,96 @@ class RealBackend implements BackendService {
   @override
   Future<BackendResult> wivrnInstallServer() async => _toResult(await _run(['wivrn', 'install-server']));
   @override
-  Future<BackendResult> wivrnDecline() async => _toResult(await _run(['wivrn', 'decline']));
+  Future<BackendResult> wivrnDecline(String serial) async => _toResult(await _run(['wivrn', 'decline', '--serial', serial]));
   @override
-  Future<BackendResult> wivrnUndecline() async => _toResult(await _run(['wivrn', 'undecline']));
+  Future<BackendResult> wivrnUndecline(String serial) async => _toResult(await _run(['wivrn', 'undecline', '--serial', serial]));
+
+  @override
+  Future<List<HomeEntry>> homesList(String serial) async {
+    final j = await _run(['homes', 'list', '--serial', serial]);
+    final list = (j['homes'] as List?) ?? [];
+    return list.map((e) => HomeEntry.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<String?> homesCurrent(String serial) async {
+    final j = await _run(['homes', 'current', '--serial', serial]);
+    if (j['ok'] != true) return null;
+    return (j['current'] as String?)?.isNotEmpty == true ? j['current'] as String : null;
+  }
+
+  @override
+  Future<BackendResult> homesSet(String serial, String component) async =>
+      _toResult(await _run(['homes', 'set', '--serial', serial, '--component', component]));
+
+  @override
+  Future<BackendResult> homesOpenSettings(String serial) async =>
+      _toResult(await _run(['homes', 'open-settings', '--serial', serial]));
+
+  @override
+  Future<SingularityPreflight?> singularityPreflight(String serial) async {
+    final j = await _run(['singularity', 'preflight', '--serial', serial]);
+    if (j['ok'] != true) return null;
+    return SingularityPreflight.fromJson(j);
+  }
+
+  @override
+  Future<Map<String, dynamic>> singularityDownload() async => await _run(['singularity', 'download']);
+
+  @override
+  Future<BackendResult> singularityInstall(String serial) async =>
+      _toResult(await _run(['singularity', 'install', '--serial', serial]));
+
+  @override
+  Future<RootStatus> singularityVerify(String serial) async {
+    final j = await _run(['singularity', 'verify', '--serial', serial]);
+    if (j['ok'] != true) return RootStatus.notRooted;
+    return RootStatus.fromJson(j);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> snapshotCreate(String serial, String name, {String? profile}) async {
+    final args = ['snapshot', 'create', '--serial', serial, '--name', name];
+    if (profile != null && profile.isNotEmpty) args.addAll(['--profile', profile]);
+    final j = await _run(args);
+    if (j['ok'] != true) return null;
+    return j;
+  }
+
+  @override
+  Future<List<SnapshotEntry>> snapshotList() async {
+    final j = await _run(['snapshot', 'list']);
+    final list = (j['snapshots'] as List?) ?? [];
+    return list.map((e) => SnapshotEntry.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<RestoreReport?> snapshotRestore(String serial, String path, {bool dryRun = false, bool confirm = false}) async {
+    final args = ['snapshot', 'restore', '--serial', serial, '--snapshot', path];
+    if (dryRun) args.add('--dry-run');
+    if (confirm) args.add('--confirm');
+    final j = await _run(args);
+    if (j['ok'] != true) return null;
+    return RestoreReport.fromJson(j);
+  }
+
+  @override
+  Future<BackendResult> snapshotDelete(String path) async =>
+      _toResult(await _run(['snapshot', 'delete', '--snapshot', path]));
+
+  @override
+  Future<HealthInfo?> deviceHealth(String serial) async {
+    final j = await _run(['devices', 'health', '--serial', serial]);
+    if (j['ok'] != true) return null;
+    return HealthInfo.fromJson(j);
+  }
+
+  @override
+  Future<ApkAnalysis?> analyzeApk(String path) async {
+    final j = await _run(['apps', 'analyze', '--apk', path]);
+    if (j['ok'] != true) return null;
+    return ApkAnalysis.fromJson(j);
+  }
 
   @override
   Future<ShellResult?> runShell(String serial, String command) async {

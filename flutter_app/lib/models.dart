@@ -440,3 +440,172 @@ class BackendResult {
   final Map<String, dynamic> data;
   const BackendResult({required this.ok, this.message = '', this.data = const {}});
 }
+
+class HomeEntry {
+  final String component, package, label;
+  final bool isCurrent;
+  const HomeEntry({required this.component, required this.package, required this.label, required this.isCurrent});
+  factory HomeEntry.fromJson(Map<String, dynamic> j) => HomeEntry(
+        component: (j['component'] ?? '').toString(),
+        package: (j['package'] ?? '').toString(),
+        label: (j['label'] ?? '').toString(),
+        isCurrent: j['is_current'] == true,
+      );
+}
+
+class SnapshotEntry {
+  final String serial, name, createdDate, path;
+  final int totalSizeBytes, appCount;
+  const SnapshotEntry({required this.serial, required this.name, required this.createdDate, required this.path, required this.totalSizeBytes, required this.appCount});
+  factory SnapshotEntry.fromJson(Map<String, dynamic> j) => SnapshotEntry(
+        serial: (j['serial'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        createdDate: (j['created_date'] ?? '').toString(),
+        path: (j['path'] ?? '').toString(),
+        totalSizeBytes: _optInt(j['total_size_bytes']) ?? 0,
+        appCount: _optInt(j['app_count']) ?? 0,
+      );
+}
+
+class HealthInfo {
+  final String serial, model, firmware;
+  final int batteryLevel, batteryTempC, batteryVoltageMv;
+  final String batteryHealth, batteryStatus;
+  final bool charging;
+  final int sdcardTotalKb, sdcardUsedKb, sdcardFreeKb;
+  final int dataTotalKb, dataUsedKb, dataFreeKb;
+  final String? uptime, lastBackup;
+  int get sdcardUsedGb => (sdcardUsedKb / 1024 / 1024).round();
+  int get sdcardTotalGb => (sdcardTotalKb / 1024 / 1024).round();
+  int get dataUsedGb => (dataUsedKb / 1024 / 1024).round();
+  int get dataTotalGb => (dataTotalKb / 1024 / 1024).round();
+  const HealthInfo({
+    required this.serial,
+    required this.model,
+    required this.firmware,
+    required this.batteryLevel,
+    required this.batteryTempC,
+    required this.batteryVoltageMv,
+    required this.batteryHealth,
+    required this.batteryStatus,
+    required this.charging,
+    required this.sdcardTotalKb,
+    required this.sdcardUsedKb,
+    required this.sdcardFreeKb,
+    required this.dataTotalKb,
+    required this.dataUsedKb,
+    required this.dataFreeKb,
+    this.uptime,
+    this.lastBackup,
+  });
+  factory HealthInfo.fromJson(Map<String, dynamic> j) {
+    final battery = (j['battery'] as Map?) ?? {};
+    final sd = (j['storage_sdcard'] as Map?) ?? {};
+    final data = (j['storage_data'] as Map?) ?? {};
+    int kb(dynamic v) => (v is num) ? v.toInt() : 0;
+    final status = (battery['status'] ?? '').toString().toLowerCase();
+    final plugged = (battery['plugged'] ?? '').toString();
+    return HealthInfo(
+      serial: (j['serial'] ?? '').toString(),
+      model: (j['model'] ?? '').toString(),
+      firmware: (j['firmware'] ?? '').toString(),
+      batteryLevel: _optInt(battery['level']) ?? 0,
+      batteryTempC: (battery['temperature_c'] is num) ? (battery['temperature_c'] as num).round() : 0,
+      batteryVoltageMv: _optInt(battery['voltage_mv']) ?? 0,
+      batteryHealth: (battery['health'] ?? '').toString(),
+      batteryStatus: (battery['status'] ?? '').toString(),
+      charging: status == 'charging' || status == 'full' || plugged.isNotEmpty,
+      sdcardTotalKb: kb(sd['total_kb']),
+      sdcardUsedKb: kb(sd['used_kb']),
+      sdcardFreeKb: kb(sd['free_kb']),
+      dataTotalKb: kb(data['total_kb']),
+      dataUsedKb: kb(data['used_kb']),
+      dataFreeKb: kb(data['free_kb']),
+      uptime: _optStr(j['uptime']),
+      lastBackup: _optStr(j['last_backup']),
+    );
+  }
+}
+
+class ApkAnalysis {
+  final String path, file;
+  final int fileSizeBytes;
+  final String sha256;
+  final String? package, label, versionName, signatureSha256;
+  final int? versionCode, minSdk, targetSdk;
+  final List<String> permissions, features, abis;
+  final bool is64Bit, signatureChecked;
+  final int nativeLibBytes, nativeLibCount, dexBytes, assetsBytes, resBytes;
+  final List<String> notes;
+  const ApkAnalysis({
+    required this.path,
+    required this.file,
+    required this.fileSizeBytes,
+    required this.sha256,
+    required this.package,
+    required this.label,
+    required this.versionName,
+    required this.versionCode,
+    required this.minSdk,
+    required this.targetSdk,
+    required this.permissions,
+    required this.features,
+    required this.abis,
+    required this.is64Bit,
+    required this.signatureChecked,
+    required this.nativeLibBytes,
+    required this.nativeLibCount,
+    required this.dexBytes,
+    required this.assetsBytes,
+    required this.resBytes,
+    required this.signatureSha256,
+    required this.notes,
+  });
+  factory ApkAnalysis.fromJson(Map<String, dynamic> j) => ApkAnalysis(
+        path: (j['path'] ?? '').toString(),
+        file: (j['file'] ?? '').toString(),
+        fileSizeBytes: _optInt(j['file_size_bytes']) ?? 0,
+        sha256: (j['sha256'] ?? '').toString(),
+        package: _optStr(j['package']),
+        label: _optStr(j['label']),
+        versionName: _optStr(j['version_name']),
+        versionCode: _optInt(j['version_code']),
+        minSdk: _optInt(j['min_sdk']),
+        targetSdk: _optInt(j['target_sdk']),
+        permissions: ((j['permissions'] as List?) ?? []).map((e) => e.toString()).toList(),
+        features: ((j['features'] as List?) ?? []).map((e) => e.toString()).toList(),
+        abis: ((j['abis'] as List?) ?? []).map((e) => e.toString()).toList(),
+        is64Bit: j['is_64_bit'] == true,
+        signatureChecked: j['signature_checked'] == true,
+        nativeLibBytes: _optInt(j['native_lib_bytes']) ?? 0,
+        nativeLibCount: _optInt(j['native_lib_count']) ?? 0,
+        dexBytes: _optInt(j['dex_bytes']) ?? 0,
+        assetsBytes: _optInt(j['assets_bytes']) ?? 0,
+        resBytes: _optInt(j['res_bytes']) ?? 0,
+        signatureSha256: _optStr(j['signature_sha256']),
+        notes: ((j['notes'] as List?) ?? []).map((e) => e.toString()).toList(),
+      );
+}
+
+class PreflightCheck {
+  final String name, detail;
+  final bool ok;
+  const PreflightCheck({required this.name, required this.detail, required this.ok});
+  factory PreflightCheck.fromJson(Map<String, dynamic> j) => PreflightCheck(
+        name: (j['name'] ?? '').toString(),
+        detail: (j['detail'] ?? '').toString(),
+        ok: j['ok'] == true,
+      );
+}
+
+class SingularityPreflight {
+  final List<PreflightCheck> checks;
+  final bool ok;
+  final String summary;
+  const SingularityPreflight({required this.checks, required this.ok, required this.summary});
+  factory SingularityPreflight.fromJson(Map<String, dynamic> j) => SingularityPreflight(
+        checks: ((j['checks'] as List?) ?? []).map((e) => PreflightCheck.fromJson(e as Map<String, dynamic>)).toList(),
+        ok: j['ok'] == true,
+        summary: (j['summary'] ?? '').toString(),
+      );
+}

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models.dart';
 import '../services/app_state.dart';
 import '../widgets/common.dart';
 
@@ -325,16 +326,30 @@ class DevicesScreen extends StatefulWidget {
 
 class _DevicesScreenState extends State<DevicesScreen> {
   bool _busy = false;
+  final Map<String, DeviceInfo> _infos = {};
 
   @override
   @override
   void initState() {
     super.initState();
+    _loadInfos();
+  }
+
+  Future<void> _loadInfos() async {
+    for (final d in widget.state.devices) {
+      if (_infos.containsKey(d.serial)) continue;
+      try {
+        final info = await widget.state.backend.deviceInfo(d.serial);
+        if (info != null) _infos[d.serial] = info;
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _refresh() async {
     setState(() => _busy = true);
     await widget.state.refreshDevices();
+    await _loadInfos();
     setState(() => _busy = false);
   }
 
@@ -386,11 +401,18 @@ class _DevicesScreenState extends State<DevicesScreen> {
             else
               ...s.devices.map((d) {
                 final selected = s.selectedDevice?.serial == d.serial;
+                final info = _infos[d.serial];
+                final profile = s.profileFor(d.serial);
+                final subtitle = [
+                  d.serial,
+                  if (info != null) 'Battery ${info.batteryLevel}%  •  ${info.storageUsedGb} / ${info.storageTotalGb} GB used',
+                  if (profile != null) 'Profile: $profile',
+                ].join('\n');
                 return Card(
                   child: ListTile(
                     leading: Icon(d.transport == 'wifi' ? Icons.wifi : Icons.usb, size: 32),
                     title: Text('${d.model}  •  ${d.transport == 'wifi' ? 'Wi-Fi' : 'USB'}'),
-                    subtitle: Text(d.serial),
+                    subtitle: Text(subtitle),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       Chip(
                         label: Text(

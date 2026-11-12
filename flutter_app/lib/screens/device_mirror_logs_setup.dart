@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/app_state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'singularity_wizard.dart';
 
 // ---- Device & Settings ----------------------------------------------------
 // Safe settings on top (all changeable over adb, reversible, and
@@ -33,18 +34,58 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   bool _scaling = false;
   final _customKey = TextEditingController();
   final _customValue = TextEditingController();
+  final _snapshotName = TextEditingController();
   List<DeviceBackupEntry> _deviceBackups = [];
+  List<HomeEntry> _homes = [];
+  List<SnapshotEntry> _snapshots = [];
+  HealthInfo? _health;
+  bool _healthLoading = false;
 
   @override
   void initState() {
     super.initState();
     widget.state.loadRooted();
+    widget.state.loadHealth();
     _loadDeviceBackups();
+    _loadHomes();
+    _loadSnapshots();
   }
 
   Future<void> _loadDeviceBackups() async {
     _deviceBackups = await widget.state.backend.listDeviceBackups();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadHomes() async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    try {
+      _homes = await widget.state.backend.homesList(serial);
+    } catch (_) {
+      _homes = [];
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadSnapshots() async {
+    try {
+      _snapshots = await widget.state.backend.snapshotList();
+    } catch (_) {
+      _snapshots = [];
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadHealth() async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    setState(() => _healthLoading = true);
+    try {
+      _health = await widget.state.backend.deviceHealth(serial);
+    } catch (_) {
+      _health = null;
+    }
+    if (mounted) setState(() => _healthLoading = false);
   }
 
   Future<void> _apply(String key, String value, String plain) async {
@@ -127,8 +168,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                   setState(() { s.activeProfile = p.name; _refresh = p.refreshRate; _cpu = p.cpuLevel; _gpu = p.gpuLevel; });
                   final serial = s.selectedDevice?.serial;
                   if (serial != null) {
-                    final r = await s.backend.applyProfile(serial, p);
-                    if (mounted) showResult(context, r.ok, r.message);
+                    await s.setDeviceProfile(serial, p);
+                    if (mounted) showResult(context, true, 'Profile ${p.name} applied and saved for this headset.');
                     s.log('Applied profile ${p.name}');
                   }
                 },
@@ -271,6 +312,120 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               ]),
             ),
           ),
+          const SectionTitle('Headset snapshots', subtitle: 'A named save point for the whole headset: settings, Guardian data, Wi-Fi configs, an inventory of your apps, and the settings profile that was on. Apps reinstall from their library backups, they are not copied into the snapshot.'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: TextField(controller: _snapshotName, decoration: const InputDecoration(labelText: 'Snapshot name, for example "Before rooting"', border: OutlineInputBorder()))),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: s.selectedDevice == null
+                        ? null
+                        : () async {
+                            final name = _snapshotName.text.trim().isEmpty ? 'Snapshot' : _snapshotName.text.trim();
+                            final r = await s.backend.snapshotCreate(s.selectedDevice!.serial, name, profile: s.activeProfile);
+                            if (mounted) showResult(context, r != null, r == null ? 'Snapshot failed. Is the headset still connected?' : 'Snapshot "$name" saved.');
+                            if (r != null) s.log('Snapshot "$name" saved.');
+                            _snapshotName.clear();
+                            await _loadSnapshots();
+                          },
+                    icon: const Icon(Icons.camera),
+                    label: const Text('Take snapshot'),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                if (_snapshots.isEmpty)
+                  const Text('No snapshots yet. Take one before a big change (rooting, a factory reset, trying a new home).')
+                else
+                  ..._snapshots.map((snap) => ListTile(
+                        leading: const Icon(Icons.history),
+                        title: Text('${snap.name}  •  ${snap.createdDate}'),
+                        subtitle: Text('${snap.serial}  •  ${formatBytes(snap.totalSizeBytes)}  •  ${snap.appCount} apps listed'),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          TextButton(onPressed: () => _restoreSnapshot(snap), child: const Text('Restore')),
+                          TextButton(
+                            onPressed: () async {
+                              final yes = await confirmDialog(context, title: 'Delete this snapshot?', body: 'This deletes the snapshot files on this computer. The headset is not touched.', confirmLabel: 'Delete', destructive: true);
+                              if (!yes) return;
+                              final r = await s.backend.snapshotDelete(snap.path);
+                              if (mounted) showResult(context, r.ok, r.message);
+                              await _loadSnapshots();
+                            },
+                            child: const Text('Delete'),
+                          ),
+                        ]),
+                      )),
+              ]),
+            ),
+          ),
+          const SectionTitle('Homes', subtitle: 'The home environments on this headset. The active one is marked. Switching uses the headset\u2019s own home command; if it refuses, open the headset\u2019s Home settings and pick there.'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (_homes.isEmpty)
+                  const Text('No home apps found, or the headset has not answered yet. Tap Refresh below.')
+                else
+                  ..._homes.map((h) => ListTile(
+                        leading: const Icon(Icons.home),
+                        title: Text(h.label),
+                        subtitle: Text(h.component),
+                        trailing: h.isCurrent
+                            ? const Chip(label: Text('Active', style: TextStyle(color: Color(0xFF070B14), fontWeight: FontWeight.bold)), backgroundColor: Color(0xFF38BDF8))
+                            : TextButton(
+                                onPressed: () async {
+                                  final r = await s.backend.homesSet(s.selectedDevice!.serial, h.component);
+                                  if (!r.ok && mounted) {
+                                    final open = await confirmDialog(context, title: 'The headset refused the switch', body: '${r.message}\n\nOpen the headset\u2019s Home settings instead and pick the home there?', confirmLabel: 'Open Home settings');
+                                    if (open) {
+                                      final r2 = await s.backend.homesOpenSettings(s.selectedDevice!.serial);
+                                      if (mounted) showResult(context, r2.ok, r2.message);
+                                    }
+                                  } else if (mounted) {
+                                    showResult(context, true, r.message);
+                                  }
+                                  await _loadHomes();
+                                },
+                                child: const Text('Set active'),
+                              ),
+                      )),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async => _loadHomes(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh homes'),
+                ),
+              ]),
+            ),
+          ),
+          const SectionTitle('Battery and health', subtitle: 'Battery, storage, uptime, and when this headset was last backed up.'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (_healthLoading)
+                  const Text('Checking the headset\u2026')
+                else if (_health == null)
+                  const Text('No health data yet. Tap Refresh below.')
+                else ...[
+                  Text('Battery: ${_health!.batteryLevel}%${_health!.charging ? ' (charging)' : ''}'),
+                  Text('Battery health: ${_health!.batteryHealth.isEmpty ? 'unknown' : _health!.batteryHealth}  •  Temperature: ${_health!.batteryTempC}\u00B0C  •  Voltage: ${_health!.batteryVoltageMv} mV'),
+                  Text('Storage: ${_health!.sdcardUsedGb} GB used of ${_health!.sdcardTotalGb} GB (${formatBytes(_health!.sdcardFreeKb * 1024)} free)'),
+                  Text('App data: ${_health!.dataUsedGb} GB used of ${_health!.dataTotalGb} GB'),
+                  if (_health!.uptime != null) Text('Uptime: ${_health!.uptime}'),
+                  Text('Last device backup: ${_health!.lastBackup ?? 'never'}'),
+                ],
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async => _loadHealth(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh health'),
+                ),
+              ]),
+            ),
+          ),
           const SizedBox(height: 16),
           Card(
             child: ExpansionTile(
@@ -279,7 +434,26 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               initiallyExpanded: false,
               children: [
                 if (!rooted)
-                  const Padding(padding: EdgeInsets.all(16), child: Text('Rooted features (full app data backup, system app removal, reading an app\'s own data folders) stay hidden until root is detected.'))
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Rooted features (full app data backup, system app removal, reading an app\'s own data folders) stay hidden until root is detected.'),
+                      const SizedBox(height: 12),
+                      const Text('If you want to root this headset, the Singularity wizard checks the headset is ready, backs it up, downloads the latest Singularity release from GitHub, installs it, and then you press Root Now on the headset. Nothing is rooted without you watching it happen.', style: TextStyle(fontSize: 13)),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: s.selectedDevice == null
+                            ? null
+                            : () async {
+                                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SingularityWizardScreen(state: s)));
+                                await widget.state.loadRooted();
+                                if (mounted) setState(() {});
+                              },
+                        icon: const Icon(Icons.key),
+                        label: const Text('Install Singularity (root wizard)'),
+                      ),
+                    ]),
+                  )
                 else ...[
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -377,6 +551,25 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
         ]),
       ),
     );
+  }
+
+  Future<void> _restoreSnapshot(SnapshotEntry snap) async {
+    final s = widget.state;
+    final serial = s.selectedDevice?.serial;
+    if (serial == null) return;
+    final dry = await s.backend.snapshotRestore(serial, snap.path, dryRun: true);
+    if (dry == null || !mounted) return;
+    final lines = dry.steps.map((st) => '• ${st.item}: ${st.message}').join('\n');
+    final yes = await confirmDialog(
+      context,
+      title: 'Restore snapshot "${snap.name}"?',
+      body: 'This will overwrite settings, Guardian data, Wi-Fi configs and apps on the headset, and re-apply the settings profile saved with the snapshot.\n\n$lines',
+      confirmLabel: 'Restore',
+      destructive: true,
+    );
+    if (!yes) return;
+    final r = await s.backend.snapshotRestore(serial, snap.path, confirm: true);
+    if (mounted) showResult(context, r?.ok ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
   }
 
   Future<void> _restoreDeviceBackup(DeviceBackupEntry b) async {
@@ -899,7 +1092,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
           ]),
           const SectionTitle('About'),
-          const Text('ReOculus 0.2.16. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
+          const Text('ReOculus 0.2.17. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
           const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
           const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
           const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),

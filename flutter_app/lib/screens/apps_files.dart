@@ -2,7 +2,58 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../services/app_state.dart';
+import '../services/backend.dart';
 import '../widgets/common.dart';
+
+/// Analyze an APK file and show what it is before installing it.
+/// Returns true when the user taps Install after reading the
+/// analysis, false otherwise. When the file cannot be read, the
+/// dialog says so and there is no Install button.
+Future<bool> showApkAnalysis(BuildContext context, BackendService backend, String path) async {
+  final a = await backend.analyzeApk(path);
+  if (a == null) {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Could not read this APK'),
+        content: Text('File: $path\n\nThe APK could not be read (it may be corrupt, or use a resource format this app cannot parse). It was not installed.'),
+        actions: [FilledButton(onPressed: () => Navigator.pop(c, false), child: const Text('OK'))],
+      ),
+    );
+    return ok == true;
+  }
+  String shortHash(String h) => h.length > 32 ? '${h.substring(0, 32)}…' : h;
+  final lines = <Widget>[
+    Text('File: ${a.file} (${formatBytes(a.fileSizeBytes)})'),
+    Text('Package: ${a.package ?? 'unknown'}'),
+    Text('Version: ${a.versionName ?? 'unknown'}${a.versionCode != null ? ' (code ${a.versionCode})' : ''}'),
+    if (a.minSdk != null || a.targetSdk != null)
+      Text('Android: min SDK ${a.minSdk ?? 'unknown'}  •  target SDK ${a.targetSdk ?? 'unknown'}'),
+    Text('Native code: ${a.abis.isEmpty ? 'none (pure Java/Kotlin)' : '${a.abis.join(', ')}${a.is64Bit ? ' (64-bit)' : ' (32-bit only)'}'}'),
+    Text('Code: ${formatBytes(a.dexBytes)}  •  Native libs: ${a.nativeLibCount} files, ${formatBytes(a.nativeLibBytes)}  •  Assets: ${formatBytes(a.assetsBytes)}  •  Resources: ${formatBytes(a.resBytes)}'),
+    if (a.features.isNotEmpty) Text('Needs: ${a.features.join(', ')}'),
+    Text('Permissions (${a.permissions.length}): ${a.permissions.isEmpty ? 'none' : a.permissions.take(8).join(', ')}${a.permissions.length > 8 ? '  •  +${a.permissions.length - 8} more' : ''}'),
+    Text('File SHA-256: ${shortHash(a.sha256)}'),
+    Text(a.signatureChecked
+        ? 'Signer SHA-256: ${shortHash(a.signatureSha256!)}'
+        : 'Signer: not checked (see the note below)'),
+    for (final n in a.notes) Text(n, style: const TextStyle(fontSize: 13)),
+    const SizedBox(height: 8),
+    const Text('Only install apps you own or that the developer gives away freely. This app never uploads the file anywhere.', style: TextStyle(fontSize: 13)),
+  ];
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: Text(a.label ?? a.file),
+      content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: lines)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Install')),
+      ],
+    ),
+  );
+  return ok == true;
+}
 
 // ---- Apps -----------------------------------------------------------------
 // Two tabs: Apps (installed on the headset, with sizes) and Library
@@ -50,17 +101,7 @@ class _AppsScreenState extends State<AppsScreen> {
     if (serial == null) return;
     final path = await pathDialog(context, title: 'Install an app', hint: 'Pick an APK file on this computer. For split apps, pick a .apks or .xapk file instead and it will be installed in one go.', extensions: const ['apk', 'apks', 'xapk']);
     if (path == null || path.isEmpty) return;
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Before you install'),
-        content: Text('File: $path\n\nOnly install apps you own or that the developer gives away freely. This app never uploads the file anywhere.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Install')),
-        ],
-      ),
-    );
+    final proceed = await showApkAnalysis(context, widget.state.backend, path);
     if (proceed != true) return;
     setState(() {
       _progress = 0.2;
@@ -251,9 +292,11 @@ class _AppsScreenState extends State<AppsScreen> {
                       subtitle: Text('$kindLabel  •  ${e.package}\n${e.dateAdded}  •  ${formatBytes(e.sizeBytes)}${e.hasData ? '  •  includes app data' : ''}'),
                       isThreeLine: true,
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        if (e.kind == 'apk')
+                        if (e.kind == 'apk') ...[
                           TextButton(
                             onPressed: () async {
+                              final proceed = await showApkAnalysis(context, widget.state.backend, e.path);
+                              if (proceed != true) return;
                               final serial = widget.state.selectedDevice?.serial;
                               if (serial == null) return;
                               final r = await widget.state.backend.installApk(serial, e.path);
@@ -261,6 +304,7 @@ class _AppsScreenState extends State<AppsScreen> {
                             },
                             child: const Text('Install'),
                           ),
+                        ],
                         if (e.kind != 'apk')
                           TextButton(
                             onPressed: () => _restoreLibraryEntry(e),

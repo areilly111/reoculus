@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apps, backup, device_backup, devices, files, gallery, library, media, settings, update_block, wireless, wivrn};
+use quest_core::{apk_analyzer, apps, backup, device_backup, devices, files, gallery, health, homes, library, media, settings, singularity, snapshot, update_block, wireless, wivrn};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -46,6 +46,12 @@ enum Commands {
     Library(LibraryArgs),
     /// WiVRn PC VR streaming: detect, start/stop server, config.
     Wivrn(WivrnArgs),
+    /// Home / environment apps: list, see the active one, switch.
+    Homes(HomesArgs),
+    /// Singularity root wizard: preflight, download, install, verify.
+    Singularity(SingularityArgs),
+    /// Named whole-headset snapshots (device backup + profile).
+    Snapshot(SnapshotArgs),
 }
 
 #[derive(Args)]
@@ -92,10 +98,112 @@ enum WivrnCmd {
     },
     /// Install the WiVRn server from the bundle shipped in the app.
     InstallServer,
-    /// Record that the user said no to PC VR setup.
-    Decline,
+    /// Record that the user said no to PC VR setup (per headset).
+    Decline {
+        #[arg(long)]
+        serial: String,
+    },
     /// Clear a recorded decline (the Install button does this too).
-    Undecline,
+    Undecline {
+        #[arg(long)]
+        serial: String,
+    },
+}
+
+#[derive(Args)]
+struct HomesArgs {
+    #[command(subcommand)]
+    cmd: HomesCmd,
+}
+#[derive(Subcommand)]
+enum HomesCmd {
+    /// List the home apps on the headset (current one first).
+    List {
+        #[arg(long)]
+        serial: String,
+    },
+    /// The active home component, or null when none is set.
+    Current {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Switch the active home to this component (package/Activity).
+    Set {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        component: String,
+    },
+    /// Open the headset's Home settings (the system home picker).
+    OpenSettings {
+        #[arg(long)]
+        serial: String,
+    },
+}
+
+#[derive(Args)]
+struct SingularityArgs {
+    #[command(subcommand)]
+    cmd: SingularityCmd,
+}
+#[derive(Subcommand)]
+enum SingularityCmd {
+    /// Preflight checks before rooting: model, battery, root, space.
+    Preflight {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Download the author's latest Singularity release from GitHub
+    /// and verify it (aapt + published checksum when one exists).
+    Download,
+    /// Install the downloaded APK on the headset (adb install).
+    Install {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Verify root after the user pressed Root Now in Singularity.
+    Verify {
+        #[arg(long)]
+        serial: String,
+    },
+}
+
+#[derive(Args)]
+struct SnapshotArgs {
+    #[command(subcommand)]
+    cmd: SnapshotCmd,
+}
+#[derive(Subcommand)]
+enum SnapshotCmd {
+    /// Take a named snapshot of the whole headset (device backup +
+    /// the active settings profile, if the UI passes --profile).
+    Create {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        profile: Option<String>,
+    },
+    /// List snapshots, newest first.
+    List,
+    /// Restore a snapshot (device restore + recorded profile).
+    /// Dry-run first; a real restore needs --confirm.
+    Restore {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        snapshot: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Delete a snapshot folder (local files only).
+    Delete {
+        #[arg(long)]
+        snapshot: PathBuf,
+    },
 }
 
 #[derive(Args)]
@@ -205,6 +313,11 @@ enum DevicesCmd {
     /// Update-block status (rooted only): are the updater packages
     /// currently disabled?
     UpdateBlockStatus {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Battery, storage, uptime and last backup for the dashboard.
+    Health {
         #[arg(long)]
         serial: String,
     },
@@ -392,6 +505,13 @@ enum AppsCmd {
         package: String,
         #[arg(long)]
         confirm: bool,
+    },
+    /// Analyze a local APK file before installing it: label,
+    /// version, SDK levels, permissions, native libraries (ABIs,
+    /// 32/64-bit), size breakdown, file SHA-256 and signer.
+    Analyze {
+        #[arg(long)]
+        apk: PathBuf,
     },
 }
 
@@ -657,8 +777,62 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             WivrnCmd::InstallClient { serial } => Ok(json!({ "message": wivrn::install_client(t.as_ref(), serial)? })),
             WivrnCmd::SetupUsb { serial } => Ok(json!({ "message": wivrn::setup_usb(t.as_ref(), serial)? })),
             WivrnCmd::InstallServer => Ok(json!({ "message": wivrn::install_server()? })),
-            WivrnCmd::Decline => Ok(json!({ "message": wivrn::set_declined(true)? })),
-            WivrnCmd::Undecline => Ok(json!({ "message": wivrn::set_declined(false)? })),
+            WivrnCmd::Decline { serial } => Ok(json!({ "message": wivrn::set_declined(true, serial)? })),
+            WivrnCmd::Undecline { serial } => Ok(json!({ "message": wivrn::set_declined(false, serial)? })),
+        },
+        Commands::Homes(a) => match &a.cmd {
+            HomesCmd::List { serial } => {
+                let hs = homes::list_homes(t.as_ref(), serial)?;
+                Ok(json!({ "homes": hs }))
+            }
+            HomesCmd::Current { serial } => {
+                let c = homes::current_home(t.as_ref(), serial)?;
+                Ok(json!({ "current": c }))
+            }
+            HomesCmd::Set { serial, component } => {
+                let m = homes::set_home(t.as_ref(), serial, component)?;
+                Ok(json!({ "message": m, "component": component }))
+            }
+            HomesCmd::OpenSettings { serial } => {
+                let m = homes::open_home_settings(t.as_ref(), serial)?;
+                Ok(json!({ "message": m }))
+            }
+        },
+        Commands::Singularity(a) => match &a.cmd {
+            SingularityCmd::Preflight { serial } => {
+                let p = singularity::preflight(t.as_ref(), serial)?;
+                Ok(serde_json::to_value(p)?)
+            }
+            SingularityCmd::Download => {
+                let r = singularity::download_latest()?;
+                Ok(serde_json::to_value(r)?)
+            }
+            SingularityCmd::Install { serial } => {
+                let m = singularity::install(t.as_ref(), serial)?;
+                Ok(json!({ "message": m }))
+            }
+            SingularityCmd::Verify { serial } => {
+                let r = singularity::verify(t.as_ref(), serial)?;
+                Ok(serde_json::to_value(r)?)
+            }
+        },
+        Commands::Snapshot(a) => match &a.cmd {
+            SnapshotCmd::Create { serial, name, profile } => {
+                let r = snapshot::create_snapshot(t.as_ref(), serial, name, profile.as_deref())?;
+                Ok(serde_json::to_value(r)?)
+            }
+            SnapshotCmd::List => {
+                let entries = snapshot::list_snapshots()?;
+                Ok(json!({ "snapshots": entries }))
+            }
+            SnapshotCmd::Restore { serial, snapshot: path, dry_run, confirm } => {
+                let r = snapshot::restore_snapshot(t.as_ref(), serial, path, *dry_run, *confirm)?;
+                Ok(serde_json::to_value(r)?)
+            }
+            SnapshotCmd::Delete { snapshot: path } => {
+                snapshot::delete_snapshot(path)?;
+                Ok(json!({ "deleted": true, "snapshot": path }))
+            }
         },
         Commands::Devices(a) => match &a.cmd {
             DevicesCmd::List => {
@@ -749,6 +923,10 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             DevicesCmd::UpdateBlockStatus { serial } => {
                 Ok(serde_json::to_value(update_block::update_block_status(t.as_ref(), serial))?)
             }
+            DevicesCmd::Health { serial } => {
+                let h = health::health(t.as_ref(), serial)?;
+                Ok(serde_json::to_value(h)?)
+            }
             DevicesCmd::UpdateBlock { serial, block, unblock } => {
                 if *block == *unblock {
                     return Err(quest_core::Error(
@@ -838,6 +1016,10 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 }
                 let msg = apps::clear_data(t.as_ref(), serial, package)?;
                 Ok(json!({ "message": msg }))
+            }
+            AppsCmd::Analyze { apk } => {
+                let a = apk_analyzer::analyze_apk(apk)?;
+                Ok(serde_json::to_value(a)?)
             }
         },
         Commands::Files(a) => match &a.cmd {

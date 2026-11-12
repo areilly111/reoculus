@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models.dart';
@@ -39,6 +40,57 @@ class AppState extends ChangeNotifier {
     SettingProfile(name: 'Battery saver', refreshRate: 72, cpuLevel: 1, gpuLevel: 1, resolution: 'Lower', guardianPaused: false),
   ];
   String activeProfile = 'Balanced';
+
+  /// Per-headset saved profile (serial -> profile name). A Quest 2
+  /// and a Quest 3 keep their own settings: switching headsets
+  /// applies the profile saved for the one you picked. Saved on
+  /// Linux to ~/.config/quest-companion/device-profiles.json;
+  /// in-memory only on Android (no questctl there yet).
+  final Map<String, String> deviceProfiles = {};
+
+  /// Battery / health for the selected headset (loaded lazily by
+  /// the Device and Settings screen).
+  HealthInfo? health;
+
+  Future<File?> _deviceProfilesFile() async {
+    if (!Platform.isLinux) return null;
+    final home = Platform.environment['HOME'];
+    if (home == null || home.isEmpty) return null;
+    return File('$home/.config/quest-companion/device-profiles.json');
+  }
+
+  Future<void> loadDeviceProfiles() async {
+    final f = await _deviceProfilesFile();
+    if (f == null) return;
+    try {
+      if (!await f.exists()) return;
+      final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+      deviceProfiles.clear();
+      for (final e in j.entries) {
+        if (e.value is String) deviceProfiles[e.key] = e.value as String;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveDeviceProfiles() async {
+    final f = await _deviceProfilesFile();
+    if (f == null) return;
+    try {
+      await f.parent.create(recursive: true);
+      await f.writeAsString(jsonEncode(deviceProfiles));
+    } catch (_) {}
+  }
+
+  String? profileFor(String serial) => deviceProfiles[serial];
+
+  /// Remember a profile for this headset and apply it now.
+  Future<void> setDeviceProfile(String serial, SettingProfile p) async {
+    activeProfile = p.name;
+    deviceProfiles[serial] = p.name;
+    await _saveDeviceProfiles();
+    await _backend.applyProfile(serial, p);
+    notifyListeners();
+  }
 
   /// Root / controller state for the selected device (loaded lazily
   /// by the Devices screen; null until checked).
@@ -99,6 +151,7 @@ class AppState extends ChangeNotifier {
     backendError = null;
     _backend = RealBackend(found);
     log('Real backend connected ($backendPath)');
+    await loadDeviceProfiles();
     notifyListeners();
     await refreshDevices();
   }
@@ -271,10 +324,24 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> declineWivrn() async {
+    final d = selectedDevice;
+    if (d == null) return;
     try {
-      await _backend.wivrnDecline();
+      await _backend.wivrnDecline(d.serial);
     } catch (_) {}
     wivrnDeclined = true;
+    notifyListeners();
+  }
+
+  /// Load battery / health for the selected device.
+  Future<void> loadHealth() async {
+    final d = selectedDevice;
+    if (d == null) return;
+    try {
+      health = await _backend.deviceHealth(d.serial);
+    } catch (_) {
+      health = null;
+    }
     notifyListeners();
   }
 
@@ -302,9 +369,24 @@ class AppState extends ChangeNotifier {
     if (selectedDevice?.serial != d.serial) {
       _wivrnChecked = false;
       wivrnSetupKnown = false;
+      health = null;
     }
     selectedDevice = d;
     notifyListeners();
-    refreshDevices();
+    refreshDevices().then((_) async {
+      // Apply the profile saved for this headset, if it has one.
+      final saved = deviceProfiles[d.serial];
+      if (saved != null && saved != activeProfile) {
+        final p = profiles.where((p) => p.name == saved).firstOrNull;
+        if (p != null) {
+          activeProfile = p.name;
+          try {
+            await _backend.applyProfile(d.serial, p);
+            log('Applied profile ${p.name} for ${d.model}');
+          } catch (_) {}
+          notifyListeners();
+        }
+      }
+    });
   }
 }

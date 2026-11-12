@@ -779,6 +779,16 @@ pub struct Badging {
     pub package: Option<String>,
     pub label: Option<String>,
     pub version: Option<String>,
+    /// `versionCode` from the `package:` line (None when aapt omits it).
+    pub version_code: Option<u32>,
+    pub sdk_version: Option<u32>,
+    pub target_sdk: Option<u32>,
+    /// `uses-permission:` names, in manifest order.
+    pub permissions: Vec<String>,
+    /// `uses-feature:` names, in manifest order.
+    pub features: Vec<String>,
+    /// `native-code:` ABIs (e.g. `arm64-v8a`), in manifest order.
+    pub native_code: Vec<String>,
     pub icons: Vec<IconEntry>,
 }
 
@@ -811,6 +821,37 @@ pub fn parse_badging(text: &str) -> Badging {
             }
             if out.package.is_none() {
                 out.package = quoted_after(rest, "name=");
+            }
+            if out.version_code.is_none() {
+                out.version_code = quoted_after(rest, "versionCode=")
+                    .and_then(|v| v.parse::<u32>().ok());
+            }
+        } else if let Some(rest) = line.strip_prefix("sdkVersion:") {
+            if out.sdk_version.is_none() {
+                out.sdk_version = quoted_after(rest, "").and_then(|v| v.parse::<u32>().ok());
+            }
+        } else if let Some(rest) = line.strip_prefix("targetSdkVersion:") {
+            if out.target_sdk.is_none() {
+                out.target_sdk = quoted_after(rest, "").and_then(|v| v.parse::<u32>().ok());
+            }
+        } else if let Some(rest) = line.strip_prefix("uses-permission:") {
+            if let Some(p) = quoted_after(rest, "name=") {
+                if !out.permissions.contains(&p) {
+                    out.permissions.push(p);
+                }
+            }
+        } else if let Some(rest) = line.strip_prefix("uses-feature:") {
+            if let Some(f) = quoted_after(rest, "name=") {
+                if !out.features.contains(&f) {
+                    out.features.push(f);
+                }
+            }
+        } else if let Some(rest) = line.strip_prefix("native-code:") {
+            for abi in rest.split_whitespace() {
+                let abi = abi.trim_matches(|c| c == '\'' || c == '"');
+                if !abi.is_empty() && !out.native_code.contains(&abi.to_string()) {
+                    out.native_code.push(abi.to_string());
+                }
             }
         } else if let Some(rest) = line.strip_prefix("application-label:") {
             if out.label.is_none() {

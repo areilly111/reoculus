@@ -73,6 +73,10 @@ Every screen, rendered from the app's own widget tests with Lorem Ipsum placehol
 
 ![Setup screen](assets/screenshots/setup.png)
 
+### Singularity root wizard
+
+![Singularity wizard](assets/screenshots/singularity-wizard.png)
+
 ## ⬇️ Download
 
 Grab the latest AppImage from the [Releases](../../releases) page and run it:
@@ -159,7 +163,7 @@ A few things people usually ask about, so let us get them out of the way:
 
 ## 📋 Status
 
-**0.2.16** (2026-11-12): the WiVRn first-run card now only appears after the setup check has actually finished and found no client app on the headset. A failed check retries on the next refresh instead of leaving the card stuck up. Setup Backend is read-only (auto-connect). The app is now called ReOculus. See the [Releases](../../releases) page for each version's notes.
+**0.2.17** (2026-11-12): Home manager (list and switch home environments), Singularity install wizard (preflight, backup, download, install, verify), headset snapshots (a named save point for the whole headset, profile included), multi-headset support (each headset keeps its own settings profile and WiVRn choice), battery and health dashboard, and an APK analyzer (what an APK is before you install it). The WiVRn first-run card only appears after the setup check has actually finished. Setup Backend is read-only (auto-connect). The app is now called ReOculus. See the [Releases](../../releases) page for each version's notes.
 
 ## ⚖️ License and credits
 

@@ -180,3 +180,65 @@ fn ls_line_parsing() {
     assert!(parse_ls_line("total 8").is_none());
     assert!(parse_ls_line("").is_none());
 }
+
+use quest_core::apk_analyzer::parse_apksigner_certs;
+use quest_core::health::{format_uptime, parse_uptime};
+use quest_core::homes::{parse_query_activities, parse_resolve_activity};
+use quest_core::singularity::pick_release_assets;
+
+#[test]
+fn homes_parsing() {
+    let comps = parse_query_activities(
+        "com.oculus.home/.HomeActivity\ncom.itsmattkc.questhomeswitcher/.MainActivity\n",
+    );
+    assert_eq!(comps.len(), 2);
+    assert_eq!(comps[1], "com.itsmattkc.questhomeswitcher/.MainActivity");
+    assert_eq!(
+        parse_resolve_activity("com.oculus.home/.HomeActivity\n"),
+        Some("com.oculus.home/.HomeActivity".to_string())
+    );
+    assert_eq!(parse_resolve_activity(""), None);
+}
+
+#[test]
+fn health_uptime() {
+    assert_eq!(parse_uptime("123456.78 98765.43\n"), Some(123456));
+    assert_eq!(format_uptime(90061), "1 day 1 hour");
+    assert_eq!(format_uptime(45), "45 seconds");
+}
+
+#[test]
+fn singularity_release_picking() {
+    let text = r#"{"tag_name":"v1.0.8","assets":[
+        {"name":"Singularity-v1.0.8.apk","browser_download_url":"https://example.com/s.apk"},
+        {"name":"checksums.sha256","browser_download_url":"https://example.com/c.txt"}
+    ]}"#;
+    let (version, pair, checksum) = pick_release_assets(text).unwrap();
+    assert_eq!(version, "v1.0.8");
+    assert!(pair.contains("Singularity-v1.0.8.apk"));
+    assert_eq!(checksum.as_deref(), Some("https://example.com/c.txt"));
+}
+
+#[test]
+fn badging_extended_fields() {
+    let text = "package: name='com.example.foo' versionCode='42' versionName='1.2.3' platformBuildVersionCode='33'\n\
+        sdkVersion:'21'\ntargetSdkVersion:'33'\nuses-permission: name='android.permission.INTERNET'\n\
+        uses-permission: name='android.permission.INTERNET'\nuses-feature: name='android.hardware.vr.headtracking'\n\
+        native-code: 'arm64-v8a' 'armeabi-v7a'\napplication-label:'Example Foo'\n";
+    let b = parse_badging(text);
+    assert_eq!(b.package.as_deref(), Some("com.example.foo"));
+    assert_eq!(b.version.as_deref(), Some("1.2.3"));
+    assert_eq!(b.version_code, Some(42));
+    assert_eq!(b.sdk_version, Some(21));
+    assert_eq!(b.target_sdk, Some(33));
+    assert_eq!(b.permissions, vec!["android.permission.INTERNET"]);
+    assert_eq!(b.features, vec!["android.hardware.vr.headtracking"]);
+    assert_eq!(b.native_code, vec!["arm64-v8a", "armeabi-v7a"]);
+}
+
+#[test]
+fn apksigner_certs_parsing() {
+    let text = "Verifies\nSigner #1 certificate SHA-256 digest: ab12cd34\n";
+    assert_eq!(parse_apksigner_certs(text).as_deref(), Some("ab12cd34"));
+    assert_eq!(parse_apksigner_certs("no signer here\n"), None);
+}

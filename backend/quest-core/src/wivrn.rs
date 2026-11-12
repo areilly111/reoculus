@@ -479,24 +479,48 @@ pub const WIVRN_APK_URL: &str =
     "https://github.com/WiVRn/WiVRn/releases/download/v26.9/WiVRn-release.apk";
 pub const WIVRN_APK_NAME: &str = "WiVRn-release.apk";
 
-fn declined_file() -> PathBuf {
+/// The decline is per headset (serial), so a user with two
+/// headsets can say no for one and set up the other. The file name
+/// is sanitized so a serial can never escape the config dir. An
+/// older install wrote one shared `wivrn-declined` file; it is
+/// still honored for every headset (legacy fallback) until it is
+/// replaced by the per-headset file.
+fn declined_file(serial: &str) -> PathBuf {
+    let safe: String = serial
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' || c == ':' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    home()
+        .join(".config")
+        .join("quest-companion")
+        .join(format!("wivrn-declined-{safe}"))
+}
+
+fn legacy_declined_file() -> PathBuf {
     home().join(".config").join("quest-companion").join("wivrn-declined")
 }
 
-pub fn is_declined() -> bool {
-    declined_file().exists()
+pub fn is_declined(serial: &str) -> bool {
+    declined_file(serial).exists() || legacy_declined_file().exists()
 }
 
-pub fn set_declined(declined: bool) -> Result<String> {
-    let f = declined_file();
+pub fn set_declined(declined: bool, serial: &str) -> Result<String> {
+    let f = declined_file(serial);
     if declined {
         if let Some(parent) = f.parent() {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&f, "declined")?;
-        Ok("Noted: PC VR will stay off until you tap Install.".into())
+        Ok("Noted: PC VR will stay off for this headset until you tap Install.".into())
     } else {
         let _ = std::fs::remove_file(&f);
+        let _ = std::fs::remove_file(legacy_declined_file());
         Ok("Decline cleared.".into())
     }
 }
@@ -528,7 +552,7 @@ pub fn setup_state(t: &dyn AdbTransport, serial: &str) -> WivrnSetupState {
         client_package,
         server_installed: d.installed,
         server_version: d.server_version,
-        declined: is_declined(),
+        declined: is_declined(serial),
         matching,
     }
 }
@@ -573,7 +597,7 @@ fn adb_run(args: &[&str]) -> Result<String> {
 pub fn install_client(t: &dyn AdbTransport, serial: &str) -> Result<String> {
     if let Some(v) = headset_client_version(t, serial) {
         if v == WIVRN_VERSION {
-            let _ = set_declined(false);
+            let _ = set_declined(false, serial);
             return Ok(format!("WiVRn {v} is already on the headset."));
         }
     }
@@ -597,7 +621,7 @@ pub fn install_client(t: &dyn AdbTransport, serial: &str) -> Result<String> {
         return Err(Error("The downloaded WiVRn APK is too small to be real; the download failed.".into()));
     }
     t.install(&Target::serial(serial), &[apk.clone()], true)?;
-    let _ = set_declined(false);
+    let _ = set_declined(false, serial);
     Ok(format!(
         "WiVRn {} installed on the headset from {}.",
         WIVRN_VERSION,

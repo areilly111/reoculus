@@ -75,6 +75,20 @@ case "$1" in
       "cmd package resolve-activity"*)
         echo "com.example.foo/com.example.foo.MainActivity"
         ;;
+      "pm resolve-activity --brief"*)
+        echo "com.example.home/com.example.home.HomeActivity"
+        ;;
+      "pm query-activities --components"*)
+        echo "com.example.home/com.example.home.HomeActivity"
+        echo "com.example.other/com.example.other.MainActivity"
+        ;;
+      "cmd package set-home-activity"*) : ;;
+      "am start -a android.settings.HOME_SETTINGS") echo "Starting: Intent { act=android.settings.HOME_SETTINGS }" ;;
+      "cat /proc/uptime") echo "123456.78 98765.43" ;;
+      "df /data")
+        echo "Filesystem      1K-blocks     Used Available Use% Mounted on"
+        echo "/dev/block/dm-3   256000000 80000000 176000000  32% /data"
+        ;;
       "am start -n"*) echo "Starting: Intent { cmp=com.example.foo/.MainActivity }" ;;
       "monkey -p"*) echo "Events injected: 1" ;;
       "am force-stop"*) : ;;
