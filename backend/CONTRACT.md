@@ -409,6 +409,24 @@ recorded here with a date and a note in both agents' READMEs.
   with it on starts the watcher, and the switch works while the
   mirror is running too.
 
+- **2026-11-12 — watcher waits for the screen to settle
+  (0.2.22).** The 0.2.21 watcher restarted the moment the
+  foreground activity changed, which sometimes landed while the
+  menu was still opening or closing, so the new stream started
+  mid-transition and smeared again: Restart looked like it did
+  nothing while Stop, wait a few seconds, then Start worked.
+  The watcher now only restarts for an activity that has been
+  unchanged for a full poll (2 s, `STABLE_SECS` in
+  `mirror_watch.rs`, decided by the pure `should_restart`
+  helper), and the floor between restarts is 5 s instead of
+  10 s, so the restart after closing the menu comes sooner.
+  Restart mirror in the app also waits 2 s after stopping
+  before it starts again, for the same reason. Verified live
+  before shipping: the old scrcpy client dies about 200 ms
+  after SIGTERM and its headset server goes with it, and
+  `device mirror` does NOT stop an already-running mirror, it
+  spawns a second one, so a restart must always stop first.
+
 ### Home apps (added 2026-11-12)
 
 | Command | Notes |
@@ -440,7 +458,7 @@ recorded here with a date and a note in both agents' READMEs.
 | Command | Notes |
 |---|---|
 | `device mirror-watch-start --serial X [--preset balanced] [--connection usb\|wifi]` | Starts the watcher detached (a `mirror-watch-run` process, PID in `~/.config/quest-companion/mirror-watch-<serial>.pid`). Any watcher already running for the serial is stopped first. Returns `{"watching": true, "pid"}`. |
-| `device mirror-watch-run --serial X [--preset balanced] [--connection usb\|wifi]` | The watcher loop itself (runs until SIGTERM). Every 2 s it reads the resumed activity (`dumpsys activity activities`, `ResumedActivity:` line) and restarts scrcpy when the activity changes, never more than once per 10 s, ignoring the transient FocusPlaceholderActivity. It also restarts scrcpy if it died on its own. Restarts re-read the mirror settings file, so a quality change applies on the next restart. Restarts are logged to `~/.local/state/quest-companion/mirror-watch.log`. |
+| `device mirror-watch-run --serial X [--preset balanced] [--connection usb\|wifi]` | The watcher loop itself (runs until SIGTERM). Every 2 s it reads the resumed activity (`dumpsys activity activities`, `ResumedActivity:` line) and restarts scrcpy once the activity has been unchanged for a full poll (2 s), never more than once per 5 s, ignoring the transient FocusPlaceholderActivity. It also restarts scrcpy if it died on its own. Restarts re-read the mirror settings file, so a quality change applies on the next restart. Restarts are logged to `~/.local/state/quest-companion/mirror-watch.log`. |
 | `device mirror-watch-stop --serial X` | SIGTERMs the watcher from its PID file. `{"stopped": bool}`. A stale PID file counts as not stopped. |
 | `device mirror-watch-status --serial X` | `{"watching": bool, "pid"}`. |
 | `device mirror-stop --serial X` | Also stops the watcher first, so it does not bring the mirror back. The watcher itself stops scrcpy through `stop_scrcpy`, never through `mirror-stop`, or it would kill itself mid-restart. |

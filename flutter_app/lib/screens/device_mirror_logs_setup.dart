@@ -1216,7 +1216,12 @@ class _MirrorScreenState extends State<MirrorScreen> {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
     await _stopMirror(silent: true);
-    await Future.delayed(const Duration(milliseconds: 500));
+    // Give the headset a moment to settle before the new stream
+    // starts. Restarting the instant the menu is still opening
+    // or closing starts the new stream mid-transition and it
+    // smears again, which is why Stop, wait a few seconds, then
+    // Start used to work when Restart did not.
+    await Future.delayed(const Duration(milliseconds: 2000));
     await _mirror();
   }
 
@@ -1819,7 +1824,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.21. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
+                  const Text('ReOculus 0.2.22. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),
