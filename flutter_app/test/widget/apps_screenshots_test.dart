@@ -185,6 +185,16 @@ Future<void> _loadFonts() async {
         ..addFont(Future<ByteData>.value(ByteData.view(bytes.buffer)));
       await loader.load();
     }
+    // The Logs/Terminal screens use fontFamily 'monospace'. Without a
+    // monospace font loaded the log lines render as solid blocks.
+    // DejaVu Sans Mono ships with the system fonts.
+    final monoFile = File('/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf');
+    if (monoFile.existsSync()) {
+      final bytes = await monoFile.readAsBytes();
+      final loader = FontLoader('monospace')
+        ..addFont(Future<ByteData>.value(ByteData.view(bytes.buffer)));
+      await loader.load();
+    }
     return;
   }
 }
