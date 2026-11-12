@@ -1,0 +1,134 @@
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        9b03f36 com.beatgames.beatsaber/com.unity3d.player.UnityPlayerGameActivity filter d118e37
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+          Category: "com.oculus.intent.category.VR"
+
+Domain verification status:
+
+Registered ContentProviders:
+  com.beatgames.beatsaber/androidx.startup.InitializationProvider:
+    Provider{a361d00 com.beatgames.beatsaber/androidx.startup.InitializationProvider}
+
+ContentProvider Authorities:
+  [${applicationId}.androidxstartup]:
+    Provider{a361d00 com.beatgames.beatsaber/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{9b28ca9 com.beatgames.beatsaber}
+
+Key Set Manager:
+  [com.beatgames.beatsaber]
+      Signing KeySets: 119
+
+Packages:
+  Package [com.beatgames.beatsaber] (d704b5a):
+    appId=10240
+    pkg=Package{b7ffb7e com.beatgames.beatsaber}
+    codePath=/data/app/~~KHOPEuhOIW1VlotuZxPM4g==/com.beatgames.beatsaber-_JnaboO-WnsmtKZHSkYPQw==
+    resourcePath=/data/app/~~KHOPEuhOIW1VlotuZxPM4g==/com.beatgames.beatsaber-_JnaboO-WnsmtKZHSkYPQw==
+    legacyNativeLibraryDir=/data/app/~~KHOPEuhOIW1VlotuZxPM4g==/com.beatgames.beatsaber-_JnaboO-WnsmtKZHSkYPQw==/lib
+    extractNativeLibs=true
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=3237 minSdk=32 targetSdk=32
+    uses-metavr-sdk=[minApiVersion=-1 (not set), targetApiVersion=-1 (not set)]
+    minExtensionVersions=[]
+    versionName=1.45.3_30054
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_REQUEST_LEGACY_EXTERNAL_STORAGE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    privateFlagsExt=[ PROFILEABLE ]
+    forceQueryable=false
+    queriesPackages=[com.oculus.store]
+    dataDir=/data/user/0/com.beatgames.beatsaber
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2026-11-09 16:45:12
+    lastUpdateTime=2026-11-09 16:45:20
+    installerPackageName=null
+    installerPackageUid=-1
+    initiatingPackageName=com.android.shell
+    originatingPackageName=null
+    packageSource=1
+    appMetadataFilePath=null
+    signatures=PackageSignatures{592a8df version:2, signatures:[9fa5d752], past signatures:[]}
+    installPermissionsFixed=true
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_REQUEST_LEGACY_EXTERNAL_STORAGE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    requested permissions:
+      android.permission.INTERNET
+      android.permission.ACCESS_NETWORK_STATE
+      android.permission.READ_EXTERNAL_STORAGE
+      android.permission.WRITE_EXTERNAL_STORAGE
+      android.permission.MANAGE_EXTERNAL_STORAGE
+      android.permission.POST_NOTIFICATIONS
+      android.permission.READ_MEDIA_AUDIO
+      android.permission.READ_MEDIA_VIDEO
+      android.permission.READ_MEDIA_IMAGES
+      android.permission.READ_MEDIA_VISUAL_USER_SELECTED
+    install permissions:
+      android.permission.MANAGE_EXTERNAL_STORAGE: granted=false
+      android.permission.INTERNET: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+    User 0: ceDataInode=125808 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false
+      installReason=0
+      firstInstallTime=2026-11-09 16:45:20
+      uninstallReason=0
+      gids=[3003]
+      runtime permissions:
+        android.permission.POST_NOTIFICATIONS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_MEDIA_VISUAL_USER_SELECTED: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_EXTERNAL_STORAGE: granted=true, flags=[ USER_SET|REVOKE_WHEN_REQUESTED|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.READ_MEDIA_IMAGES: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_MEDIA_AUDIO: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_MEDIA_VIDEO: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.WRITE_EXTERNAL_STORAGE: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+    com.beatgames.beatsaber:
+      com.oculus.store
+  queries via component:
+    com.oculus.oemconfig:
+      com.beatgames.beatsaber
+    com.oculus.q4bservice:
+      com.beatgames.beatsaber
+    com.meta.handseducationmodule:
+      com.beatgames.beatsaber
+    app.questports:
+      com.beatgames.beatsaber
+    com.threethan.tuner:
+      com.beatgames.beatsaber
+    com.lumi.singularity:
+      com.beatgames.beatsaber
+  queryable via interaction:
+    User 0:
+      [com.oculus.bugreportservice,com.oculus.labservice,com.oculus.os.vrlockscreen,com.android.inputdevices,com.oculus.deviceauthserver,horizonos.platform,com.android.location.fused,oculus.platform,com.android.keychain,com.oculus.nux.ota,com.android.providers.settings,com.android.settings,com.oculus.appsafety,com.android.server.telecom,com.oculus.companion.server,com.android.localtransport,com.oculus.os.cm,com.oculus.linefrequencyservice,android,com.oculus.os.chargecontrol,com.oculus.preshutdowntaskservice,com.oculus.micservice,com.oculus.externalstorage,com.oculus.bugreportuploader,com.oculus.notification_proxy]:
+        com.beatgames.beatsaber
+      com.android.permissioncontroller:
+        com.beatgames.beatsaber
+      com.oculus.systemdriver:
+        com.beatgames.beatsaber
+      horizonos.openxr.runtimebroker:
+        com.beatgames.beatsaber
+      com.oculus.vrshell:
+        com.beatgames.beatsaber
+      com.oculus.horizon:
+        com.beatgames.beatsaber
+  queryable via uses-library:
+
+Dexopt state:
+  [com.beatgames.beatsaber]
+    path: /data/app/~~KHOPEuhOIW1VlotuZxPM4g==/com.beatgames.beatsaber-_JnaboO-WnsmtKZHSkYPQw==/base.apk
+      arm64: [status=verify] [reason=bg-dexopt] [primary-abi]
+        [location is /data/app/~~KHOPEuhOIW1VlotuZxPM4g==/com.beatgames.beatsaber-_JnaboO-WnsmtKZHSkYPQw==/oat/arm64/base.odex]
+
+Compiler stats:
+  [com.beatgames.beatsaber]
+    (No recorded stats)

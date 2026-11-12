@@ -1,0 +1,15 @@
+[package]
+name = "questctl"
+version = "0.2.15"
+edition = "2021"
+description = "CLI for the Quest companion app. JSON interface used by the Flutter UI."
+license = "MIT"
+
+[dependencies]
+quest-core = { path = "../quest-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

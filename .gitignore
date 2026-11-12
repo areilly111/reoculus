@@ -1,0 +1,20 @@
+# Rust
+target/
+Cargo.lock
+# Flutter / Dart
+build/
+.dart_tool/
+*.log
+# Android local config
+flutter_app/android/local.properties
+flutter_app/android/key.properties
+# Bundled upstream binaries: fetched by scripts/fetch-wivrn.sh, not stored in git
+vendor/
+# Release artifacts (built files, not source)
+releases/
+QuestCompanion-*-x86_64.AppImage
+*.apk
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

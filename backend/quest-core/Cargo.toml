@@ -1,0 +1,17 @@
+[package]
+name = "quest-core"
+version = "0.2.15"
+edition = "2021"
+description = "Rust core for the Quest companion app: ADB transport, apps, files, device info, settings, media. Local only, no account, no telemetry."
+license = "MIT"
+
+[dependencies]
+libc = "0.2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+zip = "2"
+sha2 = "0.10"
+base64 = "0.22"
+libadb = { version = "0.9", features = ["tokio", "tls", "pairing", "host-keys", "usb"] }
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"

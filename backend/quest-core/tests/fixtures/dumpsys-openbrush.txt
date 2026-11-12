@@ -1,0 +1,115 @@
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        7e70879 com.Icosa.OpenBrush/com.unity3d.player.UnityPlayerActivity filter 889a9be
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+          Category: "com.oculus.intent.category.VR"
+
+Domain verification status:
+
+Key Set Manager:
+  [com.Icosa.OpenBrush]
+      Signing KeySets: 30
+
+Packages:
+  Package [com.Icosa.OpenBrush] (444e012):
+    appId=10136
+    pkg=Package{b1711ee com.Icosa.OpenBrush}
+    codePath=/data/app/~~7NHhy1Qev2eyS3rOxN9pfA==/com.Icosa.OpenBrush-B4gdM77_xXMzNZglckVWVA==
+    resourcePath=/data/app/~~7NHhy1Qev2eyS3rOxN9pfA==/com.Icosa.OpenBrush-B4gdM77_xXMzNZglckVWVA==
+    legacyNativeLibraryDir=/data/app/~~7NHhy1Qev2eyS3rOxN9pfA==/com.Icosa.OpenBrush-B4gdM77_xXMzNZglckVWVA==/lib
+    extractNativeLibs=true
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=20310001 minSdk=29 targetSdk=34
+    uses-metavr-sdk=[minApiVersion=-1 (not set), targetApiVersion=-1 (not set)]
+    minExtensionVersions=[]
+    versionName=2.31.0
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_REQUEST_LEGACY_EXTERNAL_STORAGE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    privateFlagsExt=[ PROFILEABLE ]
+    forceQueryable=false
+    dataDir=/data/user/0/com.Icosa.OpenBrush
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2026-08-30 07:42:36
+    lastUpdateTime=2026-08-30 07:42:41
+    installerPackageName=com.oculus.ocms
+    installerPackageUid=10056
+    initiatingPackageName=com.oculus.ocms
+    originatingPackageName=null
+    packageSource=0
+    appMetadataFilePath=null
+    signatures=PackageSignatures{c5d568f version:2, signatures:[f55fbf8c], past signatures:[]}
+    installPermissionsFixed=true
+    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_REQUEST_LEGACY_EXTERNAL_STORAGE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    requested permissions:
+      android.permission.RECORD_AUDIO
+      android.permission.MANAGE_EXTERNAL_STORAGE
+      android.permission.ACCESS_NETWORK_STATE
+      com.oculus.permission.USE_SCENE
+      android.permission.INTERNET
+      android.permission.MODIFY_AUDIO_SETTINGS
+      android.permission.WRITE_EXTERNAL_STORAGE
+      com.oculus.permission.USE_ANCHOR_API
+      com.oculus.permission.IMPORT_EXPORT_IOT_MAP_DATA
+      android.permission.READ_EXTERNAL_STORAGE
+      horizonos.permission.USE_SCENE
+      horizonos.permission.USE_ANCHOR_API
+      horizonos.permission.IMPORT_EXPORT_IOT_MAP_DATA
+    install permissions:
+      com.oculus.permission.USE_ANCHOR_API: granted=true
+      android.permission.MODIFY_AUDIO_SETTINGS: granted=true
+      android.permission.MANAGE_EXTERNAL_STORAGE: granted=false
+      horizonos.permission.IMPORT_EXPORT_IOT_MAP_DATA: granted=false
+      com.oculus.permission.IMPORT_EXPORT_IOT_MAP_DATA: granted=false
+      android.permission.INTERNET: granted=true
+      horizonos.permission.USE_ANCHOR_API: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+    User 0: ceDataInode=30594 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false
+      installReason=0
+      firstInstallTime=2025-03-03 01:38:59
+      uninstallReason=0
+      lastDisabledCaller: com.oculus.ocms
+      gids=[3003]
+      runtime permissions:
+        com.oculus.permission.USE_SCENE: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        horizonos.permission.USE_SCENE: granted=false, flags=[ REVOKE_WHEN_REQUESTED|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_EXTERNAL_STORAGE: granted=true, flags=[ USER_SET|REVOKE_WHEN_REQUESTED|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.WRITE_EXTERNAL_STORAGE: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.RECORD_AUDIO: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+  queries via component:
+    com.meta.handseducationmodule:
+      com.Icosa.OpenBrush
+  queryable via interaction:
+    User 0:
+      [com.oculus.bugreportservice,com.oculus.labservice,com.oculus.os.vrlockscreen,com.android.inputdevices,com.oculus.deviceauthserver,horizonos.platform,com.android.location.fused,oculus.platform,com.android.keychain,com.oculus.nux.ota,com.android.providers.settings,com.android.settings,com.oculus.appsafety,com.android.server.telecom,com.oculus.companion.server,com.android.localtransport,com.oculus.os.cm,com.oculus.linefrequencyservice,android,com.oculus.os.chargecontrol,com.oculus.preshutdowntaskservice,com.oculus.micservice,com.oculus.externalstorage,com.oculus.bugreportuploader,com.oculus.notification_proxy]:
+        com.Icosa.OpenBrush
+      com.oculus.systemdriver:
+        com.Icosa.OpenBrush
+      com.oculus.vrshell:
+        com.Icosa.OpenBrush
+      com.oculus.horizon:
+        com.Icosa.OpenBrush
+  queryable via uses-library:
+
+Dexopt state:
+  [com.Icosa.OpenBrush]
+    path: /data/app/~~7NHhy1Qev2eyS3rOxN9pfA==/com.Icosa.OpenBrush-B4gdM77_xXMzNZglckVWVA==/base.apk
+      arm64: [status=verify] [reason=install] [primary-abi]
+        [location is /data/app/~~7NHhy1Qev2eyS3rOxN9pfA==/com.Icosa.OpenBrush-B4gdM77_xXMzNZglckVWVA==/oat/arm64/base.odex]
+
+Compiler stats:
+  [com.Icosa.OpenBrush]
+    (No recorded stats)
