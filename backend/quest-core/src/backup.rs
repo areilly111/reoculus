@@ -170,7 +170,7 @@ pub struct BackupReport {
     pub backup_date: String,
     pub total_size_bytes: u64,
     /// True only when every APK pulled and the manifest was written.
-    pub ok: bool,
+    pub ready: bool,
     pub steps: Vec<ManifestStep>,
 }
 
@@ -385,7 +385,7 @@ pub fn backup_app(
         path: folder.to_string_lossy().into_owned(),
         backup_date: date,
         total_size_bytes: total,
-        ok: true,
+        ready: true,
         steps,
     })
 }
@@ -400,7 +400,7 @@ pub struct RestoreReport {
     /// When true, nothing on the headset was touched.
     pub dry_run: bool,
     pub backup_path: String,
-    pub ok: bool,
+    pub ready: bool,
     pub steps: Vec<ManifestStep>,
 }
 
@@ -511,7 +511,7 @@ pub fn restore_backup(
                     package: manifest.package.clone(),
                     dry_run,
                     backup_path: backup_dir.to_string_lossy().into_owned(),
-                    ok: false,
+                    ready: false,
                     steps,
                 });
             }
@@ -647,7 +647,7 @@ pub fn restore_backup(
         package: manifest.package,
         dry_run,
         backup_path: backup_dir.to_string_lossy().into_owned(),
-        ok,
+        ready: ok,
         steps,
     })
 }
@@ -935,7 +935,7 @@ pub fn save_backup(
         path: folder.to_string_lossy().into_owned(),
         backup_date: date,
         total_size_bytes: total,
-        ok: true,
+        ready: true,
         steps,
     })
 }
@@ -1113,7 +1113,7 @@ pub fn save_restore(
         package: manifest.package,
         dry_run,
         backup_path: backup_dir.to_string_lossy().into_owned(),
-        ok,
+        ready: ok,
         steps,
     })
 }
@@ -1307,7 +1307,7 @@ mod tests {
         let fake = fake_with_manifest(out_root.path());
         let report = backup_app(&fake, "TESTSERIAL", "com.example.game", Some(out_root.path()), true)
             .expect("fake backup");
-        assert!(report.ok);
+        assert!(report.ready);
         assert_eq!(report.steps.iter().filter(|s| s.ok).count(), report.steps.len());
         let dir = PathBuf::from(&report.path);
         assert!(dir.join("manifest.json").is_file());
@@ -1319,7 +1319,7 @@ mod tests {
         let dry = restore_backup(&fake, "TESTSERIAL", &dir, true, true, false)
             .expect("dry run");
         assert!(dry.dry_run);
-        assert!(dry.ok);
+        assert!(dry.ready);
         assert!(dry.steps.iter().any(|s| s.item == "Install APKs" && s.message.contains("would install")));
         assert!(dry.steps.iter().any(|s| s.item == "App data" && s.message.contains("no app data")));
     }

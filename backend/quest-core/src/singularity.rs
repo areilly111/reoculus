@@ -46,7 +46,7 @@ pub struct PreflightCheck {
 #[derive(Debug, Clone, Serialize)]
 pub struct Preflight {
     pub checks: Vec<PreflightCheck>,
-    pub ok: bool,
+    pub ready: bool,
     pub summary: String,
 }
 
@@ -143,7 +143,7 @@ pub fn preflight(t: &dyn AdbTransport, serial: &str) -> Result<Preflight> {
             .collect();
         format!("Not ready yet: {}", failed.join(", "))
     };
-    Ok(Preflight { checks, ok, summary })
+    Ok(Preflight { checks, ready: ok, summary })
 }
 
 /// Pick the .apk asset and an optional checksum asset out of a

@@ -61,7 +61,7 @@ pub struct DeviceBackupReport {
     pub path: String,
     pub backup_date: String,
     pub total_size_bytes: u64,
-    pub ok: bool,
+    pub ready: bool,
     pub steps: Vec<ManifestStep>,
 }
 
@@ -70,7 +70,7 @@ pub struct DeviceRestoreReport {
     pub serial: String,
     pub dry_run: bool,
     pub backup_path: String,
-    pub ok: bool,
+    pub ready: bool,
     pub steps: Vec<ManifestStep>,
 }
 
@@ -363,7 +363,7 @@ pub fn device_backup(
         path: folder.to_string_lossy().into_owned(),
         backup_date: date,
         total_size_bytes: total,
-        ok: true,
+        ready: true,
         steps,
     })
 }
@@ -638,7 +638,7 @@ pub fn device_restore(
             for r in refs {
                 let dir = PathBuf::from(r.library_path.as_deref().unwrap_or(""));
                 match restore_backup(t, serial, &dir, include_data, false, true) {
-                    Ok(rep) if rep.ok => restored += 1,
+                    Ok(rep) if rep.ready => restored += 1,
                     Ok(_) => failed += 1,
                     Err(_) => failed += 1,
                 }
@@ -655,7 +655,7 @@ pub fn device_restore(
         serial: serial.to_string(),
         dry_run,
         backup_path: backup_dir.to_string_lossy().into_owned(),
-        ok,
+        ready: ok,
         steps,
     })
 }

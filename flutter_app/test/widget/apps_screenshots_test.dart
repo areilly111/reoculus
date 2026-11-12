@@ -157,7 +157,7 @@ class FakeBackend implements BackendService {
     if (name == #snapshotCreate) return Future<Map<String, dynamic>?>.value({'ok': true, 'name': 'Lorem ipsum'});
     if (name == #snapshotRestore) {
       return Future<RestoreReport?>.value(const RestoreReport(
-        package: 'com.lorem.ipsum', backupPath: '/sdcard/LoremIpsum/snap1', dryRun: true, ok: true,
+        package: 'com.lorem.ipsum', backupPath: '/sdcard/LoremIpsum/snap1', dryRun: true, ready: true,
         steps: [StepResult(item: 'Lorem ipsum', message: 'dolor sit amet', ok: true)],
       ));
     }
@@ -165,7 +165,7 @@ class FakeBackend implements BackendService {
     if (name == #deviceHealth) return Future<HealthInfo?>.value(_health);
     if (name == #singularityPreflight) {
       return Future<SingularityPreflight?>.value(const SingularityPreflight(
-        ok: true, summary: 'Lorem ipsum dolor sit amet.',
+        ready: true, summary: 'Lorem ipsum dolor sit amet.',
         checks: [
           PreflightCheck(name: 'Lorem ipsum', detail: 'dolor sit amet', ok: true),
           PreflightCheck(name: 'Consectetur adipiscing', detail: 'sed do eiusmod', ok: true),

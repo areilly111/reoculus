@@ -560,6 +560,10 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     final dry = await s.backend.snapshotRestore(serial, snap.path, dryRun: true);
     if (dry == null || !mounted) return;
     final lines = dry.steps.map((st) => '• ${st.item}: ${st.message}').join('\n');
+    if (!dry.ready) {
+      if (mounted) showResult(context, false, 'Cannot restore yet:\n$lines');
+      return;
+    }
     final yes = await confirmDialog(
       context,
       title: 'Restore snapshot "${snap.name}"?',
@@ -569,7 +573,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     );
     if (!yes) return;
     final r = await s.backend.snapshotRestore(serial, snap.path, confirm: true);
-    if (mounted) showResult(context, r?.ok ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
+    if (mounted) showResult(context, r?.ready ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
   }
 
   Future<void> _restoreDeviceBackup(DeviceBackupEntry b) async {
@@ -579,6 +583,10 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     final dry = await s.backend.deviceRestore(serial, b.path, dryRun: true);
     if (dry == null || !mounted) return;
     final lines = dry.steps.map((st) => '• ${st.item}: ${st.message}').join('\n');
+    if (!dry.ready) {
+      if (mounted) showResult(context, false, 'Cannot restore yet:\n$lines');
+      return;
+    }
     final yes = await confirmDialog(
       context,
       title: 'Restore this device backup?',
@@ -588,7 +596,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     );
     if (!yes) return;
     final r = await s.backend.deviceRestore(serial, b.path, confirm: true);
-    if (mounted) showResult(context, r?.ok ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
+    if (mounted) showResult(context, r?.ready ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
   }
 }
 

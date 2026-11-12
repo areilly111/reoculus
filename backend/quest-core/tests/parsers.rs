@@ -183,7 +183,7 @@ fn ls_line_parsing() {
 
 use quest_core::apk_analyzer::parse_apksigner_certs;
 use quest_core::health::{format_uptime, parse_uptime};
-use quest_core::homes::{parse_query_activities, parse_resolve_activity};
+use quest_core::homes::{is_home_component, parse_query_activities, parse_resolve_activity};
 use quest_core::singularity::pick_release_assets;
 
 #[test]
@@ -198,6 +198,18 @@ fn homes_parsing() {
         Some("com.oculus.home/.HomeActivity".to_string())
     );
     assert_eq!(parse_resolve_activity(""), None);
+    // The system UI panels that answer the HOME intent are not
+    // homes, and neither is any dialog activity.
+    assert!(is_home_component("com.oculus.vrshell/.HomeActivity"));
+    assert!(is_home_component("com.threethan.launcher/com.threethan.LightningLauncher"));
+    assert!(is_home_component("com.android.settings/.FallbackHome"));
+    assert!(!is_home_component(
+        "com.oculus.systemux/com.oculus.panelapp.library.LibraryActivity"
+    ));
+    assert!(!is_home_component(
+        "com.oculus.systemux/com.oculus.panelapp.library.ShortcutCreationDialogActivity"
+    ));
+    assert!(!is_home_component("com.foo/.SomeDialogActivity"));
 }
 
 #[test]

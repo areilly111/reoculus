@@ -253,20 +253,23 @@ class BackupReport {
 /// Result of `apps restore` / `apps save-restore` / `device restore`.
 class RestoreReport {
   final String package, backupPath;
-  final bool dryRun, ok;
+  // `ready`, not `ok`: the backend envelope already uses `ok` for
+  // "the command ran", so a report-level `ok` would be clobbered
+  // by it and the UI could never see a dry run that found problems.
+  final bool dryRun, ready;
   final List<StepResult> steps;
   const RestoreReport({
     required this.package,
     required this.backupPath,
     required this.dryRun,
-    required this.ok,
+    required this.ready,
     required this.steps,
   });
   factory RestoreReport.fromJson(Map<String, dynamic> j) => RestoreReport(
         package: (j['package'] ?? '').toString(),
         backupPath: (j['backup_path'] ?? j['backup'] ?? '').toString(),
         dryRun: j['dry_run'] == true,
-        ok: j['ok'] == true,
+        ready: j['ready'] == true,
         steps: _steps(j['steps']),
       );
 }
@@ -600,12 +603,15 @@ class PreflightCheck {
 
 class SingularityPreflight {
   final List<PreflightCheck> checks;
-  final bool ok;
+  // `ready`, not `ok`: the backend envelope already uses `ok` for
+  // "the command ran", so a report-level `ok` would be clobbered
+  // by it and the wizard could never see a failed preflight.
+  final bool ready;
   final String summary;
-  const SingularityPreflight({required this.checks, required this.ok, required this.summary});
+  const SingularityPreflight({required this.checks, required this.ready, required this.summary});
   factory SingularityPreflight.fromJson(Map<String, dynamic> j) => SingularityPreflight(
         checks: ((j['checks'] as List?) ?? []).map((e) => PreflightCheck.fromJson(e as Map<String, dynamic>)).toList(),
-        ok: j['ok'] == true,
+        ready: j['ready'] == true,
         summary: (j['summary'] ?? '').toString(),
       );
 }

@@ -91,13 +91,37 @@ fn package_of(component: &str) -> String {
         .to_string()
 }
 
+/// True when a component from `pm query-activities` is a home a user
+/// can actually pick. The query also lists system panels that handle
+/// the HOME intent but are not homes: the Quest system UI library
+/// panel and its shortcut dialog (`com.oculus.systemux`), and any
+/// dialog activity. Those would fail to set, so they never reach
+/// the list. Verified live on a Quest 2: the real homes are
+/// `com.oculus.vrshell`, `com.threethan.launcher` and
+/// `com.android.settings/.FallbackHome`.
+pub fn is_home_component(component: &str) -> bool {
+    let (pkg, activity) = component
+        .split_once('/')
+        .unwrap_or((component, ""));
+    if pkg == "com.oculus.systemux" {
+        return false;
+    }
+    if activity.contains("Dialog") {
+        return false;
+    }
+    true
+}
+
 pub fn list_homes(t: &dyn AdbTransport, serial: &str) -> Result<Vec<HomeEntry>> {
     let target = Target::serial(serial);
     let out = t.shell(
         &target,
         "pm query-activities --components -a android.intent.action.MAIN -c android.intent.category.HOME",
     )?;
-    let components = parse_query_activities(&out.stdout);
+    let components: Vec<String> = parse_query_activities(&out.stdout)
+        .into_iter()
+        .filter(|c| is_home_component(c))
+        .collect();
     if components.is_empty() {
         return Err(Error(
             "no home apps answered the query (is this a Quest? the headset may need a restart)".into(),

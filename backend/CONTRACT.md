@@ -291,6 +291,14 @@ recorded here with a date and a note in both agents' READMEs.
   headset (`~/.config/quest-companion/device-profiles.json`) and
   applies the saved profile when switching headsets.
 
+  Report payloads use a `ready` field (preflight, restore reports,
+  backup/snapshot reports) instead of `ok`: the envelope already
+  uses `ok` for "the command ran", and it overwrote any report-level
+  `ok`, so a failed preflight or an un-restorable dry run looked
+  successful. `homes list` drops the Quest system UI panels that
+  answer the HOME intent but are not homes (`com.oculus.systemux`
+  library panel and shortcut dialog, and any dialog activity).
+
 ### Homes (added 2026-11-12)
 
 | Command | Notes |

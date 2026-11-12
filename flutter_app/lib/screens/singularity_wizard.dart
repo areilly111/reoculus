@@ -37,7 +37,7 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
     setState(() { _busy = true; _error = null; });
     try {
       _preflight = await widget.state.backend.singularityPreflight(_serial);
-      if (_preflight?.ok == true) setState(() => _step = 1);
+      if (_preflight?.ready == true) setState(() => _step = 1);
     } catch (e) {
       _error = 'Checks failed: $e';
     }
@@ -137,7 +137,7 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
                 Stepper(
                   currentStep: _step,
                   onStepTapped: (i) {
-                    if (i == 0 || (i == 1 && _preflight?.ok == true) || (i == 2 && _backupDone) || (i == 3 && _download != null) || (i == 4 && _installDone)) {
+                    if (i == 0 || (i == 1 && _preflight?.ready == true) || (i == 2 && _backupDone) || (i == 3 && _download != null) || (i == 4 && _installDone)) {
                       setState(() => _step = i);
                     }
                   },
@@ -147,7 +147,7 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
                       title: const Text('1. Check the headset is ready'),
                       subtitle: const Text('Quest 2, battery, not already rooted, free space.'),
                       isActive: _step == 0,
-                      state: _preflight?.ok == true ? StepState.complete : StepState.indexed,
+                      state: _preflight?.ready == true ? StepState.complete : StepState.indexed,
                       content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         if (_preflight == null)
                           const Text('Running checks\u2026')

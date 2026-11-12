@@ -340,6 +340,10 @@ class _AppsScreenState extends State<AppsScreen> {
         : await widget.state.backend.restoreBackup(serial, e.path, dryRun: true);
     if (dry == null || !mounted) return;
     final lines = dry.steps.map((st) => '• ${st.item}: ${st.message}').join('\n');
+    if (!dry.ready) {
+      if (mounted) showResult(context, false, 'Cannot restore yet:\n$lines');
+      return;
+    }
     final includeData = !isSave &&
         await showDialog<bool>(
           context: context,
@@ -365,7 +369,7 @@ class _AppsScreenState extends State<AppsScreen> {
         ? await widget.state.backend.saveRestore(serial, e.path, confirm: true)
         : await widget.state.backend.restoreBackup(serial, e.path, includeData: includeData, confirm: true);
     if (mounted) {
-      showResult(context, r?.ok ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
+      showResult(context, r?.ready ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
     }
     await _load();
   }

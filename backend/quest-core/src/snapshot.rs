@@ -54,7 +54,7 @@ pub struct SnapshotReport {
     pub path: String,
     pub created_date: String,
     pub total_size_bytes: u64,
-    pub ok: bool,
+    pub ready: bool,
     pub steps: Vec<crate::backup::ManifestStep>,
 }
 
@@ -126,7 +126,7 @@ pub fn create_snapshot(
         path: report.path,
         created_date: report.backup_date,
         total_size_bytes: report.total_size_bytes,
-        ok: report.ok,
+        ready: report.ready,
         steps: report.steps,
     })
 }
