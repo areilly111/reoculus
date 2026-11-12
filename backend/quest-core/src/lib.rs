@@ -7,6 +7,7 @@
 pub mod apps;
 pub mod apk_analyzer;
 pub mod backup;
+pub mod battery_history;
 pub mod device_backup;
 pub mod devices;
 pub mod gallery;
@@ -23,6 +24,7 @@ pub mod error;
 pub mod files;
 pub mod keys;
 pub mod media;
+pub mod mirror_settings;
 pub mod paths;
 pub mod settings;
 pub mod transport;

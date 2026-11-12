@@ -86,13 +86,44 @@ class CardGrid extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, constraints) {
           // One card on its own takes the full width; two or more
-          // share the row when the window is wide enough.
-          final wide = constraints.maxWidth >= 860 && cards.length > 1;
-          final width = wide ? (constraints.maxWidth - spacing) / 2 : constraints.maxWidth;
-          return Wrap(
-            spacing: spacing,
-            runSpacing: spacing,
-            children: cards.map((c) => SizedBox(width: width, child: c)).toList(),
+          // share the width when the window is wide enough. The
+          // cards are split into two columns that flow on their
+          // own, so a short card no longer leaves a gap below it
+          // when its neighbour is taller (a Wrap row stretches to
+          // the tallest card in the row, which left empty space
+          // under every short card).
+          if (constraints.maxWidth < 860 || cards.length < 2) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < cards.length; i++) ...[
+                  if (i > 0) SizedBox(height: spacing),
+                  cards[i],
+                ],
+              ],
+            );
+          }
+          final left = <Widget>[];
+          final right = <Widget>[];
+          for (var i = 0; i < cards.length; i++) {
+            (i.isEven ? left : right).add(cards[i]);
+          }
+          Widget column(List<Widget> items) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < items.length; i++) ...[
+                    if (i > 0) SizedBox(height: spacing),
+                    items[i],
+                  ],
+                ],
+              );
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: column(left)),
+              SizedBox(width: spacing),
+              Expanded(child: column(right)),
+            ],
           );
         },
       );

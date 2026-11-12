@@ -77,6 +77,9 @@ abstract class BackendService {
   Future<PathsInfo?> pathsGet();
   Future<PathsInfo?> pathsSet({String? backupRoot, String? recordingsRoot});
   Future<PathsInfo?> pathsReset();
+  Future<MirrorSettings?> mirrorSettings();
+  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality});
+  Future<MirrorSettings?> resetMirrorSettings();
   Future<SingularityPreflight?> singularityPreflight(String serial);
   Future<Map<String, dynamic>> singularityDownload();
   Future<BackendResult> singularityInstall(String serial);
@@ -101,6 +104,7 @@ abstract class BackendService {
   Future<RestoreReport?> snapshotRestore(String serial, String path, {bool dryRun = false, bool confirm = false});
   Future<BackendResult> snapshotDelete(String path);
   Future<HealthInfo?> deviceHealth(String serial);
+  Future<BatteryHistory?> batteryHistory(String serial);
   Future<ApkAnalysis?> analyzeApk(String path);
   Future<ShellResult?> runShell(String serial, String command);
   Future<DebugInfo?> debugInfo(String serial);
@@ -558,6 +562,30 @@ class RealBackend implements BackendService {
   }
 
   @override
+  Future<MirrorSettings?> mirrorSettings() async {
+    final j = await _run(['mirror-settings', 'get']);
+    if (j['ok'] != true) return null;
+    return MirrorSettings.fromJson(j);
+  }
+
+  @override
+  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality}) async {
+    final args = ['mirror-settings', 'set'];
+    if (usbQuality != null) args.addAll(['--usb', usbQuality]);
+    if (wifiQuality != null) args.addAll(['--wifi', wifiQuality]);
+    final j = await _run(args);
+    if (j['ok'] != true) return null;
+    return MirrorSettings.fromJson(j);
+  }
+
+  @override
+  Future<MirrorSettings?> resetMirrorSettings() async {
+    final j = await _run(['mirror-settings', 'reset']);
+    if (j['ok'] != true) return null;
+    return MirrorSettings.fromJson(j);
+  }
+
+  @override
   Future<SingularityPreflight?> singularityPreflight(String serial) async {
     final j = await _run(['singularity', 'preflight', '--serial', serial]);
     if (j['ok'] != true) return null;
@@ -709,6 +737,13 @@ class RealBackend implements BackendService {
     final j = await _run(['devices', 'health', '--serial', serial]);
     if (j['ok'] != true) return null;
     return HealthInfo.fromJson(j);
+  }
+
+  @override
+  Future<BatteryHistory?> batteryHistory(String serial) async {
+    final j = await _run(['devices', 'battery-history', '--serial', serial]);
+    if (j['ok'] != true) return null;
+    return BatteryHistory.fromJson(j);
   }
 
   @override

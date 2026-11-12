@@ -196,6 +196,25 @@ class FakeBackend implements BackendService {
         recordingsRootIsDefault: true,
       ));
     }
+    if (name == #mirrorSettings || name == #setMirrorSettings || name == #resetMirrorSettings) {
+      return Future<MirrorSettings?>.value(const MirrorSettings(usbQuality: 'balanced', wifiQuality: 'performance'));
+    }
+    if (name == #batteryHistory) {
+      return Future<BatteryHistory?>.value(BatteryHistory(
+        serial: 'TESTSERIAL000001',
+        batteryLevel: 87,
+        charging: false,
+        samples: const [
+          BatterySample(time: 1794444000, level: 96, charging: true),
+          BatterySample(time: 1794447600, level: 91, charging: false),
+          BatterySample(time: 1794451200, level: 87, charging: false),
+        ],
+        topApps: const [
+          AppUsage(package: 'com.lorem.ipsum.game', totalForegroundMs: 11400000, lastUsedMs: 1794451200000),
+          AppUsage(package: 'com.lorem.ipsum.player', totalForegroundMs: 2700000, lastUsedMs: 1794447600000),
+        ],
+      ));
+    }
     if (name == #snapshotList) return Future<List<SnapshotEntry>>.value(_snapshots);
     if (name == #snapshotCreate) return Future<Map<String, dynamic>?>.value({'ok': true, 'name': 'Lorem ipsum'});
     if (name == #snapshotRestore) {

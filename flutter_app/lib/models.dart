@@ -536,6 +536,50 @@ class HealthInfo {
   }
 }
 
+class BatterySample {
+  final int time, level;
+  final bool charging;
+  const BatterySample({required this.time, required this.level, required this.charging});
+  factory BatterySample.fromJson(Map<String, dynamic> j) => BatterySample(
+        time: (j['time'] is num) ? (j['time'] as num).toInt() : 0,
+        level: (j['level'] is num) ? (j['level'] as num).toInt() : 0,
+        charging: j['charging'] == true,
+      );
+}
+
+class AppUsage {
+  final String package;
+  final int totalForegroundMs;
+  final int? lastUsedMs;
+  const AppUsage({required this.package, required this.totalForegroundMs, this.lastUsedMs});
+  factory AppUsage.fromJson(Map<String, dynamic> j) => AppUsage(
+        package: (j['package'] ?? '').toString(),
+        totalForegroundMs: (j['total_foreground_ms'] is num) ? (j['total_foreground_ms'] as num).toInt() : 0,
+        lastUsedMs: (j['last_used_ms'] is num) ? (j['last_used_ms'] as num).toInt() : null,
+      );
+}
+
+class BatteryHistory {
+  final String serial;
+  final int batteryLevel;
+  final bool charging;
+  final List<BatterySample> samples;
+  final List<AppUsage> topApps;
+  const BatteryHistory({required this.serial, required this.batteryLevel, required this.charging, required this.samples, required this.topApps});
+  factory BatteryHistory.fromJson(Map<String, dynamic> j) {
+    final battery = (j['battery'] as Map?) ?? {};
+    final status = (battery['status'] ?? '').toString().toLowerCase();
+    final plugged = (battery['plugged'] ?? '').toString();
+    return BatteryHistory(
+      serial: (j['serial'] ?? '').toString(),
+      batteryLevel: _optInt(battery['level']) ?? 0,
+      charging: status == 'charging' || status == 'full' || plugged.isNotEmpty,
+      samples: ((j['samples'] as List?) ?? []).map((s) => BatterySample.fromJson(s as Map<String, dynamic>)).toList(),
+      topApps: ((j['top_apps'] as List?) ?? []).map((a) => AppUsage.fromJson(a as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
 class ApkAnalysis {
   final String path, file;
   final int fileSizeBytes;
@@ -735,5 +779,14 @@ class PathsInfo {
         configFile: (j['config_file'] ?? '').toString(),
         backupRootIsDefault: j['backup_root_is_default'] == true,
         recordingsRootIsDefault: j['recordings_root_is_default'] == true,
+      );
+}
+
+class MirrorSettings {
+  final String usbQuality, wifiQuality;
+  const MirrorSettings({required this.usbQuality, required this.wifiQuality});
+  factory MirrorSettings.fromJson(Map<String, dynamic> j) => MirrorSettings(
+        usbQuality: (j['usb_quality'] ?? 'balanced').toString(),
+        wifiQuality: (j['wifi_quality'] ?? 'performance').toString(),
       );
 }

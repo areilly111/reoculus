@@ -370,6 +370,25 @@ recorded here with a date and a note in both agents' READMEs.
   edit, so the app opens homes on demand and offers the headset's
   Home settings picker instead.
 
+- **2026-11-12 — mirror quality settings, category headers,
+  battery and usage history, spacing fix (0.2.20).** New modules
+  `mirror_settings.rs` and `battery_history.rs`. `mirror-settings
+  get/set/reset` (one mirror quality preset for USB, one for
+  Wi-Fi; defaults are the old automatic picks, USB Balanced and
+  Wi-Fi Performance; the Mirror screen now has a dropdown for
+  each, saved when changed). `devices battery-history --serial X`
+  (live battery from `dumpsys battery`, battery samples recorded
+  on this computer each time health is checked, most-used apps
+  from the headset's `dumpsys usagestats`); the Headset Health
+  card has a Battery and usage history block. Device and Settings
+  groups its cards under category headers (Display and speed,
+  Backups, Home, Health); About this headset is full width at the
+  top. `CardGrid` is now two columns that flow on their own
+  instead of Wrap rows, so a short card no longer leaves a gap
+  below it when its neighbour is taller. The `usagestats` output
+  is parsed leniently: an unrecognised format gives an empty
+  top-apps list, never a wrong one.
+
 ### Home apps (added 2026-11-12)
 
 | Command | Notes |
@@ -387,6 +406,20 @@ recorded here with a date and a note in both agents' READMEs.
 | `paths get` | `{"backup_root", "backup_root_is_default", "recordings_root", "recordings_root_is_default", "config_file"}`. Defaults: backups/library `~/.local/share/quest-companion/backups/`, recordings `~/quest-recordings/`. |
 | `paths set [--backup-root <path>] [--recordings-root <path>]` | Writes `~/.config/quest-companion/paths.json`. Paths must be absolute and, when they exist, must be directories. The new folder starts empty; existing files are not moved. |
 | `paths reset` | Deletes the config file; both locations go back to their defaults. |
+
+### Mirror quality (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `mirror-settings get` | `{"usb_quality", "wifi_quality"}`. Defaults: USB Balanced, Wi-Fi Performance (the old automatic picks). |
+| `mirror-settings set [--usb <performance\|balanced\|quality>] [--wifi <...>]` | Writes `~/.config/quest-companion/mirror.json`. Unknown presets are refused. |
+| `mirror-settings reset` | Deletes the config file; both go back to their defaults. |
+
+### Battery history (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `devices battery-history --serial X` | `{"serial", "battery", "samples": [{"time", "level", "charging"}], "top_apps": [{"package", "total_foreground_ms", "last_used_ms"}]}`. Battery is live from `dumpsys battery`. Samples are recorded on this computer each time health is checked (at most every 30 minutes unless the level moved by 2 or more or charging flipped; 500 kept, oldest dropped). Top apps come from the last-24-hours events in the headset's own `dumpsys usagestats` (ACTIVITY_RESUMED to PAUSED/STOPPED/Destroyed, overlapping activities of one app counted once), most time in the foreground first, 8 at most; the parse fails soft to an empty list. Controller battery is not in here either. |
 
 ### Homes (added 2026-11-12)
 

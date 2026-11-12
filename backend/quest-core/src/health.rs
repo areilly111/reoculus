@@ -74,6 +74,14 @@ pub fn health(t: &dyn AdbTransport, serial: &str) -> Result<HealthInfo> {
         .ok()
         .and_then(|o| parse_uptime(&o.stdout));
     let uptime = uptime_seconds.map(format_uptime);
+    // Record a battery sample for the history kept on this
+    // computer. Best effort: a failure here never breaks health.
+    if let Some(level) = info.battery.level {
+        let charging = info.battery.status.as_deref() == Some("charging")
+            || info.battery.status.as_deref() == Some("full")
+            || info.battery.plugged.is_some();
+        crate::battery_history::record_sample(serial, level, charging);
+    }
     let last_backup = list_device_backups()
         .ok()
         .and_then(|entries| {

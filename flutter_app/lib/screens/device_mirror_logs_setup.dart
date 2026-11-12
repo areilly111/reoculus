@@ -40,6 +40,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   List<HomeEntry> _homes = [];
   List<SnapshotEntry> _snapshots = [];
   HealthInfo? _health;
+  BatteryHistory? _batteryHistory;
   bool _healthLoading = false;
   List<SingularityDownload> _downloads = [];
   OtaStatusInfo? _ota;
@@ -94,7 +95,36 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     } catch (_) {
       _health = null;
     }
+    try {
+      _batteryHistory = await widget.state.backend.batteryHistory(serial);
+    } catch (_) {
+      _batteryHistory = null;
+    }
     if (mounted) setState(() => _healthLoading = false);
+  }
+
+  String _formatDayTime(int unixSeconds) {
+    final d = DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final hour = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final ampm = d.hour < 12 ? 'AM' : 'PM';
+    return '${months[d.month - 1]} ${d.day}, $hour:${d.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  String _formatUseTime(int ms) {
+    final minutes = ms ~/ 60000;
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    return rest == 0 ? '$hours h' : '$hours h $rest min';
+  }
+
+  /// The app shows the last part of the package id as the name
+  /// (the same fallback the Apps screen uses when an app has no
+  /// launcher label on file).
+  String _shortName(String package) {
+    final last = package.split('.').last;
+    return last.isEmpty ? package : last;
   }
 
   /// Singularity downloads, update blocker, and dock settings for
@@ -223,6 +253,14 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
       ),
     );
   }
+
+  /// A category header above a group of related cards, so the
+  /// page reads as sections (Display and speed, Backups, Home,
+  /// Health) instead of one long mixed list.
+  Widget _categoryHeader(String title) => Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 8),
+        child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+      );
 
   Widget _downloadRow(SingularityDownload d) {
     final serial = widget.state.selectedDevice?.serial;
@@ -356,25 +394,27 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
           Text('Device and settings', style: Theme.of(context).textTheme.headlineSmall),
           const Text('Safe settings are at the top. Anything that can break the headset is in the closed Dangerous section below. Rooted settings are in their own closed section, and only show up when this headset is rooted. Most of these settings reset when the headset restarts. Your saved profile is applied again each time you connect.'),
           const SizedBox(height: 12),
-          CardGrid(cards: [
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: info == null
-                    ? const Text('No headset selected.')
-                    : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('About this headset', style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 8),
-                        Text('Model: ${info.model}'),
-                        Text('Serial: ${info.serial}'),
-                        Text('Firmware: ${info.firmware}'),
-                        Text('Android: ${info.androidVersion}'),
-                        Text('Screen: ${info.resolution}'),
-                        Text('Processor: ${info.cpuAbi}'),
-                      ]),
-              ),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: info == null
+                  ? const Text('No headset selected.')
+                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('About this headset', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Text('Model: ${info.model}'),
+                      Text('Serial: ${info.serial}'),
+                      Text('Firmware: ${info.firmware}'),
+                      Text('Android: ${info.androidVersion}'),
+                      Text('Screen: ${info.resolution}'),
+                      Text('Processor: ${info.cpuAbi}'),
+                    ]),
             ),
+          ),
+          const SizedBox(height: 16),
+          _categoryHeader('Display and speed'),
+          CardGrid(cards: [
             _sectionCard(
               title: 'Saved profiles',
               subtitle: 'Pick one and it is applied now and again on every connect.',
@@ -519,6 +559,10 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                 ),
               ]),
             ),
+          ]),
+          const SizedBox(height: 16),
+          _categoryHeader('Backups'),
+          CardGrid(cards: [
             _sectionCard(
               title: 'Device backups',
               subtitle: 'Settings, Guardian data, Wi-Fi configs, and an inventory of your apps. Apps themselves live in the library, not in the device backup.',
@@ -600,6 +644,10 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                       )),
               ]),
             ),
+          ]),
+          const SizedBox(height: 16),
+          _categoryHeader('Home'),
+          CardGrid(cards: [
             _sectionCard(
               title: 'Homes',
               subtitle: 'The launchers on this headset (Lightning Launcher and any other third-party home). Meta Home, the stock launcher, is not listed: it is the default, and you switch to it in the headset\u2019s Home settings.',
@@ -680,6 +728,10 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                 ]),
               ]),
             ),
+          ]),
+          const SizedBox(height: 16),
+          _categoryHeader('Health'),
+          CardGrid(cards: [
             _sectionCard(
               title: 'Headset Health',
               subtitle: 'Battery, storage, uptime, controllers, and when this headset was last backed up.',
@@ -713,6 +765,25 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                 const Text('Controller battery is not readable from this computer; check it in the headset (quick settings shows the controller batteries). Left and right cannot be told apart from here.', style: TextStyle(fontSize: 13)),
                 const SizedBox(height: 4),
                 const Text('Pair a controller: hold Menu + Y (left) or Menu + B (right) until the LED blinks, then pair it in the headset under Settings, Devices.', style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 12),
+                const Text('Battery and usage history', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                if (_batteryHistory == null)
+                  const Text('History is still loading.')
+                else ...[
+                  if (_batteryHistory!.samples.isEmpty)
+                    const Text('ReOculus starts recording battery levels the first time it checks this headset, so the history fills in over the next few days. It can only see the headset while it is connected.')
+                  else
+                    ..._batteryHistory!.samples.reversed.take(6).map((s) => Text('• ${_formatDayTime(s.time)}: ${s.level}%${s.charging ? ' (charging)' : ''}')),
+                  const SizedBox(height: 8),
+                  if (_batteryHistory!.topApps.isEmpty)
+                    const Text('Nothing used in the last 24 hours, or the headset did not share its usage stats.')
+                  else ...[
+                    const Text('Most used apps (last 24 hours)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    ..._batteryHistory!.topApps.map((a) => Text('• ${_shortName(a.package)}: ${_formatUseTime(a.totalForegroundMs)} total${a.lastUsedMs == null ? '' : ', last used ${_formatDayTime(a.lastUsedMs! ~/ 1000)}'}')),
+                  ],
+                ],
                 const SizedBox(height: 8),
                 Row(children: [
                   OutlinedButton.icon(
@@ -1039,6 +1110,52 @@ class _MirrorScreenState extends State<MirrorScreen> {
   bool _mirroring = false;
   bool _recording = false;
   String? _lastSaved;
+  MirrorSettings _quality = const MirrorSettings(usbQuality: 'balanced', wifiQuality: 'performance');
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQuality();
+  }
+
+  Future<void> _loadQuality() async {
+    final q = await widget.state.backend.mirrorSettings();
+    if (q != null && mounted) setState(() => _quality = q);
+  }
+
+  Future<void> _saveQuality({String? usb, String? wifi}) async {
+    final before = _quality;
+    setState(() => _quality = MirrorSettings(
+          usbQuality: usb ?? _quality.usbQuality,
+          wifiQuality: wifi ?? _quality.wifiQuality,
+        ));
+    final q = await widget.state.backend.setMirrorSettings(usbQuality: usb, wifiQuality: wifi);
+    if (!mounted) return;
+    if (q == null) {
+      setState(() => _quality = before);
+      showResult(context, false, 'Could not save the mirror quality. Is the backend still running?');
+    } else {
+      setState(() => _quality = q);
+    }
+  }
+
+  Widget _qualityRow(String label, String value, ValueChanged<String> onChanged) => Row(children: [
+        SizedBox(width: 48, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold))),
+        Expanded(
+          child: DropdownButton<String>(
+            value: const ['performance', 'balanced', 'quality'].contains(value) ? value : 'balanced',
+            isExpanded: true,
+            items: const [
+              DropdownMenuItem(value: 'performance', child: Text('Performance (1280, 4M, 30)')),
+              DropdownMenuItem(value: 'balanced', child: Text('Balanced (1920, 8M, 60)')),
+              DropdownMenuItem(value: 'quality', child: Text('Quality (2560, 12M, 90)')),
+            ],
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          ),
+        ),
+      ]);
 
   Future<void> _mirror() async {
     final serial = widget.state.selectedDevice?.serial;
@@ -1052,11 +1169,11 @@ class _MirrorScreenState extends State<MirrorScreen> {
     }
     await _stopMirror(silent: true);
     setState(() => _mirroring = true);
-    // Auto: no quality setting for the user to change. USB is fast
-    // enough for Balanced (1920/8M/60), Wi-Fi uses Performance
-    // (1280/4M/30) so it stays smooth instead of glitching.
+    // The quality comes from the saved settings: one preset for
+    // USB, one for Wi-Fi. The defaults are the old automatic
+    // picks (USB Balanced, Wi-Fi Performance).
     final transport = widget.state.selectedDevice?.transport ?? '';
-    final preset = transport == 'wifi' ? 'Performance' : 'Balanced';
+    final preset = transport == 'wifi' ? _quality.wifiQuality : _quality.usbQuality;
     final r = await widget.state.backend.startMirror(serial, preset);
     if (mounted) showResult(context, r.ok, r.message);
     widget.state.log('Mirror started');
@@ -1125,10 +1242,19 @@ class _MirrorScreenState extends State<MirrorScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   const Expanded(child: Text('Quality', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-                  InfoButton('Mirror quality', 'The mirror quality is picked for you, there is no setting to change. USB uses Balanced (1920, 8M, 60) and Wi-Fi uses Performance (1280, 4M, 30), because Wi-Fi cannot keep up with the higher one and the picture starts glitching. If the picture smears after you open the Quest menu, tap Restart mirror.'),
+                  InfoButton('Mirror quality', 'Pick the mirror quality for USB and for Wi-Fi. Performance is the smoothest (1280, 4M, 30), Balanced is the middle (1920, 8M, 60), Quality is the sharpest (2560, 12M, 90) but needs a fast connection, so Wi-Fi usually glitches on it. The change applies the next time you start the mirror. If the picture smears after you open the Quest menu, tap Restart mirror.'),
                 ]),
                 const SizedBox(height: 4),
-                const Text('Picked automatically, no setting to change. USB uses Balanced, Wi-Fi uses Performance, so the mirror stays smooth instead of glitching.', style: TextStyle(fontSize: 13)),
+                _qualityRow('USB', _quality.usbQuality, (v) => _saveQuality(usb: v)),
+                _qualityRow('Wi-Fi', _quality.wifiQuality, (v) => _saveQuality(wifi: v)),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () async {
+                    final q = await widget.state.backend.resetMirrorSettings();
+                    if (q != null && mounted) setState(() => _quality = q);
+                  },
+                  child: const Text('Reset to defaults (USB Balanced, Wi-Fi Performance)'),
+                ),
               ]),
             ),
           ),
@@ -1663,7 +1789,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.19. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
+                  const Text('ReOculus 0.2.20. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),

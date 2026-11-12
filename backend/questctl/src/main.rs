@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, device_backup, devices, files, gallery, health, home_apps, homes, library, media, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
+use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, health, home_apps, homes, library, media, mirror_settings, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -52,6 +52,8 @@ enum Commands {
     HomeApps(HomeAppsArgs),
     /// Storage locations on this computer (backups, recordings).
     Paths(PathsArgs),
+    /// Mirror quality per connection type (USB, Wi-Fi).
+    MirrorSettings(MirrorSettingsArgs),
     /// Singularity root wizard: preflight, download, install, verify.
     Singularity(SingularityArgs),
     /// Named whole-headset snapshots (device backup + profile).
@@ -223,6 +225,27 @@ enum PathsCmd {
         recordings_root: Option<String>,
     },
     /// Go back to the default folders.
+    Reset,
+}
+
+#[derive(Args)]
+struct MirrorSettingsArgs {
+    #[command(subcommand)]
+    cmd: MirrorSettingsCmd,
+}
+#[derive(Subcommand)]
+enum MirrorSettingsCmd {
+    /// Show the mirror quality picked for USB and for Wi-Fi.
+    Get,
+    /// Pick the mirror quality for USB and/or Wi-Fi
+    /// (performance, balanced or quality).
+    Set {
+        #[arg(long)]
+        usb: Option<String>,
+        #[arg(long)]
+        wifi: Option<String>,
+    },
+    /// Go back to the defaults (USB Balanced, Wi-Fi Performance).
     Reset,
 }
 
@@ -523,6 +546,12 @@ enum DevicesCmd {
     },
     /// Battery, storage, uptime and last backup for the dashboard.
     Health {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Battery now, battery samples recorded on this computer, and
+    /// the most-used apps from the headset's own usage stats.
+    BatteryHistory {
         #[arg(long)]
         serial: String,
     },
@@ -1044,6 +1073,17 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             }
             PathsCmd::Reset => Ok(serde_json::to_value(paths::reset_paths()?)?),
         },
+        Commands::MirrorSettings(a) => match &a.cmd {
+            MirrorSettingsCmd::Get => {
+                Ok(serde_json::to_value(mirror_settings::get_mirror_settings())?)
+            }
+            MirrorSettingsCmd::Set { usb, wifi } => Ok(serde_json::to_value(
+                mirror_settings::set_mirror_settings(usb.clone(), wifi.clone())?,
+            )?),
+            MirrorSettingsCmd::Reset => Ok(serde_json::to_value(
+                mirror_settings::reset_mirror_settings(),
+            )?),
+        },
         Commands::Singularity(a) => match &a.cmd {
             SingularityCmd::Preflight { serial } => {
                 let p = singularity::preflight(t.as_ref(), serial)?;
@@ -1243,6 +1283,10 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             }
             DevicesCmd::Health { serial } => {
                 let h = health::health(t.as_ref(), serial)?;
+                Ok(serde_json::to_value(h)?)
+            }
+            DevicesCmd::BatteryHistory { serial } => {
+                let h = battery_history::battery_history(t.as_ref(), serial)?;
                 Ok(serde_json::to_value(h)?)
             }
             DevicesCmd::UpdateBlock { serial, block, unblock } => {
