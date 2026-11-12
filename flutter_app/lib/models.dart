@@ -784,9 +784,11 @@ class PathsInfo {
 
 class MirrorSettings {
   final String usbQuality, wifiQuality;
-  const MirrorSettings({required this.usbQuality, required this.wifiQuality});
+  final bool autoRestart;
+  const MirrorSettings({required this.usbQuality, required this.wifiQuality, this.autoRestart = true});
   factory MirrorSettings.fromJson(Map<String, dynamic> j) => MirrorSettings(
         usbQuality: (j['usb_quality'] ?? 'balanced').toString(),
         wifiQuality: (j['wifi_quality'] ?? 'performance').toString(),
+        autoRestart: j['auto_restart'] != false,
       );
 }

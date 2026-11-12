@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, health, home_apps, homes, library, media, mirror_settings, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
+use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -238,12 +238,15 @@ enum MirrorSettingsCmd {
     /// Show the mirror quality picked for USB and for Wi-Fi.
     Get,
     /// Pick the mirror quality for USB and/or Wi-Fi
-    /// (performance, balanced or quality).
+    /// (performance, balanced or quality), and/or turn
+    /// auto-restart on or off.
     Set {
         #[arg(long)]
         usb: Option<String>,
         #[arg(long)]
         wifi: Option<String>,
+        #[arg(long)]
+        auto_restart: Option<String>,
     },
     /// Go back to the defaults (USB Balanced, Wi-Fi Performance).
     Reset,
@@ -828,6 +831,37 @@ enum DeviceCmd {
         #[arg(long, default_value = "balanced")]
         preset: String,
     },
+    /// Watch the foreground activity and restart the mirror when
+    /// it changes (a game or the menu opens). Spawns the watcher
+    /// detached; stopping the mirror stops it.
+    MirrorWatchStart {
+        #[arg(long)]
+        serial: String,
+        #[arg(long, default_value = "balanced")]
+        preset: String,
+        #[arg(long, default_value = "usb")]
+        transport: String,
+    },
+    /// The watcher loop itself (run detached by
+    /// mirror-watch-start). Runs until killed.
+    MirrorWatchRun {
+        #[arg(long)]
+        serial: String,
+        #[arg(long, default_value = "balanced")]
+        preset: String,
+        #[arg(long, default_value = "usb")]
+        transport: String,
+    },
+    /// Stop the mirror watcher for this serial.
+    MirrorWatchStop {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Is the mirror watcher running for this serial?
+    MirrorWatchStatus {
+        #[arg(long)]
+        serial: String,
+    },
     /// Reboot the headset (`adb -s <serial> reboot`).
     Reboot {
         #[arg(long)]
@@ -1077,10 +1111,15 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             MirrorSettingsCmd::Get => {
                 Ok(serde_json::to_value(mirror_settings::get_mirror_settings())?)
             }
-            MirrorSettingsCmd::Set { usb, wifi } => Ok(serde_json::to_value(
-                mirror_settings::set_mirror_settings(usb.clone(), wifi.clone())?,
-            )?),
-            MirrorSettingsCmd::Reset => Ok(serde_json::to_value(
+            MirrorSettingsCmd::Set { usb, wifi, auto_restart } => {
+                let auto = match auto_restart {
+                    Some(v) => Some(mirror_settings::normalize_on_off(v)?),
+                    None => None,
+                };
+                Ok(serde_json::to_value(
+                    mirror_settings::set_mirror_settings(usb.clone(), wifi.clone(), auto)?,
+                )?)
+            }            MirrorSettingsCmd::Reset => Ok(serde_json::to_value(
                 mirror_settings::reset_mirror_settings(),
             )?),
         },
@@ -1426,6 +1465,21 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             DeviceCmd::Mirror { serial, preset } => {
                 let m = media::mirror(t.as_ref(), serial, preset)?;
                 Ok(json!({ "launched": true, "command": m.command, "note": m.note }))
+            }
+            DeviceCmd::MirrorWatchStart { serial, preset, transport } => {
+                let s = mirror_watch::start_watch(serial, preset, transport)?;
+                Ok(serde_json::to_value(s)?)
+            }
+            DeviceCmd::MirrorWatchRun { serial, preset, transport } => {
+                mirror_watch::run_watch(t.as_ref(), serial, preset, transport);
+            }
+            DeviceCmd::MirrorWatchStop { serial } => {
+                let stopped = mirror_watch::stop_watch(serial)?;
+                Ok(json!({ "stopped": stopped, "serial": serial }))
+            }
+            DeviceCmd::MirrorWatchStatus { serial } => {
+                let s = mirror_watch::watch_status(serial);
+                Ok(serde_json::to_value(s)?)
             }
             DeviceCmd::Reboot { serial } => {
                 t.reboot(&target(cli, serial))?;

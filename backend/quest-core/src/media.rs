@@ -170,12 +170,10 @@ pub fn mirror(t: &dyn AdbTransport, serial: &str, preset: &str) -> Result<Mirror
     })
 }
 
-/// Stop a running scrcpy mirror for this serial. scrcpy is launched
-/// detached, so the app must find it by scanning /proc for a scrcpy
-/// process whose command line names this serial, then SIGTERM it
-/// (SIGKILL after a short wait). Returns how many were stopped.
-pub fn mirror_stop(serial: &str) -> Result<usize> {
-    let mut stopped = 0usize;
+/// PIDs of scrcpy processes mirroring this serial, found by
+/// scanning /proc for a scrcpy command line naming the serial.
+fn scrcpy_pids(serial: &str) -> Result<Vec<i32>> {
+    let mut pids = Vec::new();
     let proc = std::fs::read_dir("/proc").map_err(|e| Error(format!("cannot list /proc: {e}")))?;
     for entry in proc.flatten() {
         let pid: i32 = match entry.file_name().to_string_lossy().parse() {
@@ -197,11 +195,39 @@ pub fn mirror_stop(serial: &str) -> Result<usize> {
         if !parts.iter().any(|a| *a == serial) {
             continue;
         }
-        unsafe { libc::kill(pid, libc::SIGTERM) };
-        stopped += 1;
+        pids.push(pid);
     }
-    if stopped > 0 {
+    Ok(pids)
+}
+
+/// Is a scrcpy mirror running for this serial? Same /proc scan as
+/// the stop, without killing anything.
+pub fn mirror_running(serial: &str) -> bool {
+    scrcpy_pids(serial).map(|p| !p.is_empty()).unwrap_or(false)
+}
+
+/// Stop scrcpy for this serial (SIGTERM, no SIGKILL follow-up).
+/// Returns how many were stopped. This does NOT touch the
+/// auto-restart watcher: the watcher calls this itself when it
+/// restarts the mirror, and stopping the watcher there would
+/// kill the watcher mid-restart.
+pub fn stop_scrcpy(serial: &str) -> Result<usize> {
+    let pids = scrcpy_pids(serial)?;
+    for pid in &pids {
+        unsafe { libc::kill(*pid, libc::SIGTERM) };
+    }
+    if !pids.is_empty() {
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
-    Ok(stopped)
+    Ok(pids.len())
+}
+
+/// Stop a running scrcpy mirror for this serial. Also stops the
+/// auto-restart watcher first, so it does not bring the mirror
+/// back a moment later. (The watcher itself stops scrcpy through
+/// `stop_scrcpy`, never through this, or it would kill itself
+/// mid-restart.)
+pub fn mirror_stop(serial: &str) -> Result<usize> {
+    let _ = crate::mirror_watch::stop_watch(serial);
+    stop_scrcpy(serial)
 }

@@ -154,6 +154,8 @@ class FakeBackend implements BackendService {
     if (name == #listDeviceBackups) return Future<List<DeviceBackupEntry>>.value(_deviceBackups);
     if (name == #homesList) return Future<List<HomeEntry>>.value(_homes);
     if (name == #homesCurrent) return Future<String?>.value('com.lorem.ipsum/.HomeActivity');
+    if (name == #startMirrorWatch) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Mirror watcher started.'));
+    if (name == #stopMirrorWatch) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Mirror watcher stopped.'));
     if (name == #homesSet) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home switched.'));
     if (name == #homesOpenSettings) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home settings are open on the headset.'));
     if (name == #homesOpen) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Opened on the headset.'));

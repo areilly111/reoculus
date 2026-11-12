@@ -389,6 +389,26 @@ recorded here with a date and a note in both agents' READMEs.
   is parsed leniently: an unrecognised format gives an empty
   top-apps list, never a wrong one.
 
+- **2026-11-12 — mirror auto-restart (0.2.21).** New module
+  `mirror_watch.rs`; `mirror_settings.rs` gains an `auto_restart`
+  flag (on by default, `mirror-settings set --auto-restart
+  on|off`). New commands `device mirror-watch-start/run/stop/
+  status --serial X` (see the Mirror auto-restart table). The
+  watcher polls the resumed activity every 2 s (`dumpsys activity
+  activities`, `ResumedActivity:` line, verified live) and
+  restarts scrcpy when it changes, so opening a game or the Quest
+  menu over a game no longer leaves the mirror smeared; the cost
+  is a second or two of black while scrcpy reopens. It never
+  restarts more than once per 10 s, ignores the transient
+  FocusPlaceholderActivity, re-reads the quality settings on
+  each restart, and brings scrcpy back if it dies on its own.
+  `device mirror-stop` kills the watcher first; the watcher
+  itself stops scrcpy through `stop_scrcpy`, never through
+  `mirror-stop`, or it would kill itself mid-restart. The Mirror
+  screen has a Restart automatically switch; starting the mirror
+  with it on starts the watcher, and the switch works while the
+  mirror is running too.
+
 ### Home apps (added 2026-11-12)
 
 | Command | Notes |
@@ -411,9 +431,19 @@ recorded here with a date and a note in both agents' READMEs.
 
 | Command | Notes |
 |---|---|
-| `mirror-settings get` | `{"usb_quality", "wifi_quality"}`. Defaults: USB Balanced, Wi-Fi Performance (the old automatic picks). |
-| `mirror-settings set [--usb <performance\|balanced\|quality>] [--wifi <...>]` | Writes `~/.config/quest-companion/mirror.json`. Unknown presets are refused. |
-| `mirror-settings reset` | Deletes the config file; both go back to their defaults. |
+| `mirror-settings get` | `{"usb_quality", "wifi_quality", "auto_restart"}`. Defaults: USB Balanced, Wi-Fi Performance (the old automatic picks), auto-restart on. |
+| `mirror-settings set [--usb <performance\|balanced\|quality>] [--wifi <...>] [--auto-restart on\|off]` | Writes `~/.config/quest-companion/mirror.json`. Unknown presets are refused, as is anything but on/off for auto-restart. |
+| `mirror-settings reset` | Deletes the config file; both go back to their defaults, auto-restart back on. |
+
+### Mirror auto-restart (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `device mirror-watch-start --serial X [--preset balanced] [--transport usb\|wifi]` | Starts the watcher detached (a `mirror-watch-run` process, PID in `~/.config/quest-companion/mirror-watch-<serial>.pid`). Any watcher already running for the serial is stopped first. Returns `{"watching": true, "pid"}`. |
+| `device mirror-watch-run --serial X [--preset balanced] [--transport usb\|wifi]` | The watcher loop itself (runs until SIGTERM). Every 2 s it reads the resumed activity (`dumpsys activity activities`, `ResumedActivity:` line) and restarts scrcpy when the activity changes, never more than once per 10 s, ignoring the transient FocusPlaceholderActivity. It also restarts scrcpy if it died on its own. Restarts re-read the mirror settings file, so a quality change applies on the next restart. Restarts are logged to `~/.local/state/quest-companion/mirror-watch.log`. |
+| `device mirror-watch-stop --serial X` | SIGTERMs the watcher from its PID file. `{"stopped": bool}`. A stale PID file counts as not stopped. |
+| `device mirror-watch-status --serial X` | `{"watching": bool, "pid"}`. |
+| `device mirror-stop --serial X` | Also stops the watcher first, so it does not bring the mirror back. The watcher itself stops scrcpy through `stop_scrcpy`, never through `mirror-stop`, or it would kill itself mid-restart. |
 
 ### Battery history (added 2026-11-12)
 

@@ -78,8 +78,10 @@ abstract class BackendService {
   Future<PathsInfo?> pathsSet({String? backupRoot, String? recordingsRoot});
   Future<PathsInfo?> pathsReset();
   Future<MirrorSettings?> mirrorSettings();
-  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality});
+  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart});
   Future<MirrorSettings?> resetMirrorSettings();
+  Future<BackendResult> startMirrorWatch(String serial, String preset, String transport);
+  Future<BackendResult> stopMirrorWatch(String serial);
   Future<SingularityPreflight?> singularityPreflight(String serial);
   Future<Map<String, dynamic>> singularityDownload();
   Future<BackendResult> singularityInstall(String serial);
@@ -569,10 +571,11 @@ class RealBackend implements BackendService {
   }
 
   @override
-  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality}) async {
+  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart}) async {
     final args = ['mirror-settings', 'set'];
     if (usbQuality != null) args.addAll(['--usb', usbQuality]);
     if (wifiQuality != null) args.addAll(['--wifi', wifiQuality]);
+    if (autoRestart != null) args.addAll(['--auto-restart', autoRestart ? 'on' : 'off']);
     final j = await _run(args);
     if (j['ok'] != true) return null;
     return MirrorSettings.fromJson(j);
@@ -584,6 +587,14 @@ class RealBackend implements BackendService {
     if (j['ok'] != true) return null;
     return MirrorSettings.fromJson(j);
   }
+
+  @override
+  Future<BackendResult> startMirrorWatch(String serial, String preset, String transport) async =>
+      _toResult(await _run(['device', 'mirror-watch-start', '--serial', serial, '--preset', preset, '--transport', transport]));
+
+  @override
+  Future<BackendResult> stopMirrorWatch(String serial) async =>
+      _toResult(await _run(['device', 'mirror-watch-stop', '--serial', serial]));
 
   @override
   Future<SingularityPreflight?> singularityPreflight(String serial) async {

@@ -36,6 +36,25 @@ pub struct MirrorSettingsConfig {
     pub usb_quality: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wifi_quality: Option<String>,
+    /// Restart the mirror by itself when a game or the menu opens.
+    /// `None` means on (the default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_restart: Option<bool>,
+}
+
+/// Auto-restart is on unless the user turned it off.
+pub const DEFAULT_AUTO_RESTART: bool = true;
+
+/// "on" / "off" from the command line, or an error naming the
+/// bad value.
+pub fn normalize_on_off(value: &str) -> Result<bool> {
+    match value.trim().to_lowercase().as_str() {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        _ => Err(Error(format!(
+            "unknown auto-restart '{value}': pick on or off"
+        ))),
+    }
 }
 
 fn config_path() -> Result<PathBuf> {
@@ -71,6 +90,7 @@ fn write_config(cfg: &MirrorSettingsConfig) -> Result<()> {
 pub struct MirrorSettings {
     pub usb_quality: String,
     pub wifi_quality: String,
+    pub auto_restart: bool,
 }
 
 /// The effective settings: the saved choice where there is one,
@@ -92,15 +112,17 @@ pub fn get_mirror_settings() -> MirrorSettings {
     MirrorSettings {
         usb_quality: usb,
         wifi_quality: wifi,
+        auto_restart: cfg.auto_restart.unwrap_or(DEFAULT_AUTO_RESTART),
     }
 }
 
-/// Save a new quality for USB and/or Wi-Fi. Either may be left
-/// out to keep the current one. Returns the effective settings
-/// afterwards.
+/// Save a new quality for USB and/or Wi-Fi, and/or turn
+/// auto-restart on or off. Anything left out keeps its current
+/// value. Returns the effective settings afterwards.
 pub fn set_mirror_settings(
     usb_quality: Option<String>,
     wifi_quality: Option<String>,
+    auto_restart: Option<bool>,
 ) -> Result<MirrorSettings> {
     let mut cfg = read_config();
     if let Some(u) = usb_quality {
@@ -109,12 +131,15 @@ pub fn set_mirror_settings(
     if let Some(w) = wifi_quality {
         cfg.wifi_quality = Some(normalize_preset(&w)?);
     }
+    if let Some(a) = auto_restart {
+        cfg.auto_restart = Some(a);
+    }
     write_config(&cfg)?;
     Ok(get_mirror_settings())
 }
 
 /// Go back to the old automatic picks (USB Balanced, Wi-Fi
-/// Performance).
+/// Performance) and auto-restart back on.
 pub fn reset_mirror_settings() -> MirrorSettings {
     if let Ok(path) = config_path() {
         let _ = std::fs::remove_file(path);

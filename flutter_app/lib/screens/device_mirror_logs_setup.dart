@@ -1123,19 +1123,36 @@ class _MirrorScreenState extends State<MirrorScreen> {
     if (q != null && mounted) setState(() => _quality = q);
   }
 
-  Future<void> _saveQuality({String? usb, String? wifi}) async {
+  Future<void> _saveQuality({String? usb, String? wifi, bool? autoRestart}) async {
     final before = _quality;
     setState(() => _quality = MirrorSettings(
           usbQuality: usb ?? _quality.usbQuality,
           wifiQuality: wifi ?? _quality.wifiQuality,
+          autoRestart: autoRestart ?? _quality.autoRestart,
         ));
-    final q = await widget.state.backend.setMirrorSettings(usbQuality: usb, wifiQuality: wifi);
+    final q = await widget.state.backend.setMirrorSettings(usbQuality: usb, wifiQuality: wifi, autoRestart: autoRestart);
     if (!mounted) return;
     if (q == null) {
       setState(() => _quality = before);
       showResult(context, false, 'Could not save the mirror quality. Is the backend still running?');
     } else {
       setState(() => _quality = q);
+    }
+  }
+
+  /// Turn auto-restart on or off. When the mirror is running, the
+  /// watcher starts or stops with it, so the change takes effect
+  /// right away instead of on the next mirror start.
+  Future<void> _setAutoRestart(bool v) async {
+    await _saveQuality(autoRestart: v);
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null || !_mirroring) return;
+    final transport = widget.state.selectedDevice?.transport ?? '';
+    final preset = transport == 'wifi' ? _quality.wifiQuality : _quality.usbQuality;
+    if (v) {
+      await widget.state.backend.startMirrorWatch(serial, preset, transport == 'wifi' ? 'wifi' : 'usb');
+    } else {
+      await widget.state.backend.stopMirrorWatch(serial);
     }
   }
 
@@ -1177,6 +1194,13 @@ class _MirrorScreenState extends State<MirrorScreen> {
     final r = await widget.state.backend.startMirror(serial, preset);
     if (mounted) showResult(context, r.ok, r.message);
     widget.state.log('Mirror started');
+    // Auto-restart: a watcher on this computer checks which app
+    // is in front about once a second and restarts the mirror
+    // when a game or the menu opens, so it does not smear.
+    // Stopping the mirror stops the watcher too.
+    if (r.ok && _quality.autoRestart) {
+      await widget.state.backend.startMirrorWatch(serial, preset, transport == 'wifi' ? 'wifi' : 'usb');
+    }
   }
 
   Future<void> _stopMirror({bool silent = false}) async {
@@ -1254,6 +1278,12 @@ class _MirrorScreenState extends State<MirrorScreen> {
                     if (q != null && mounted) setState(() => _quality = q);
                   },
                   child: const Text('Reset to defaults (USB Balanced, Wi-Fi Performance)'),
+                ),
+                SwitchListTile(
+                  title: const Text('Restart automatically'),
+                  subtitle: const Text('When a game or the menu opens, the mirror restarts itself instead of smearing. The picture goes black for a second or two.'),
+                  value: _quality.autoRestart,
+                  onChanged: (v) => _setAutoRestart(v),
                 ),
               ]),
             ),
@@ -1789,7 +1819,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.20. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
+                  const Text('ReOculus 0.2.21. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),

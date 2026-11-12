@@ -25,6 +25,7 @@ pub mod files;
 pub mod keys;
 pub mod media;
 pub mod mirror_settings;
+pub mod mirror_watch;
 pub mod paths;
 pub mod settings;
 pub mod transport;
