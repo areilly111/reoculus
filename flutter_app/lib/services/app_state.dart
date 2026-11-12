@@ -42,9 +42,14 @@ class AppState extends ChangeNotifier {
   // WiVRn first-run setup: headset client version (null = not
   // installed), whether the user said no, whether the server is
   // installed on this PC. Checked once per headset connection.
+  // `wivrnSetupKnown` is only true after a check actually finished:
+  // before that, a null client version means "not checked yet", not
+  // "not installed". A failed check leaves it false so the next
+  // refresh retries instead of showing the install card forever.
   String? wivrnClientVersion;
   bool wivrnDeclined = false;
   bool wivrnServerInstalled = false;
+  bool wivrnSetupKnown = false;
   bool _wivrnChecked = false;
   UpdateBlockStatus? updateBlock;
   bool _rootLoading = false;
@@ -220,14 +225,16 @@ class AppState extends ChangeNotifier {
   Future<void> checkWivrnSetup() async {
     final d = selectedDevice;
     if (d == null || _wivrnChecked) return;
-    _wivrnChecked = true;
     try {
       final st = await _backend.wivrnSetupState(d.serial);
       wivrnClientVersion = st['client_version'] as String?;
       wivrnDeclined = st['declined'] == true;
       wivrnServerInstalled = st['server_installed'] == true;
+      _wivrnChecked = true;
+      wivrnSetupKnown = true;
     } catch (_) {
-      // Quiet: PC VR still works from its own screen.
+      // Quiet: PC VR still works from its own screen. Do NOT mark
+      // the check done: the next refresh retries it.
     }
     notifyListeners();
   }
@@ -287,7 +294,10 @@ class AppState extends ChangeNotifier {
   }
 
   void selectDevice(QuestDevice d) {
-    if (selectedDevice?.serial != d.serial) _wivrnChecked = false;
+    if (selectedDevice?.serial != d.serial) {
+      _wivrnChecked = false;
+      wivrnSetupKnown = false;
+    }
     selectedDevice = d;
     notifyListeners();
     refreshDevices();

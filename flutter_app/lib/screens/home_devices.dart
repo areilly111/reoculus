@@ -241,11 +241,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ]),
             ),
           ),
-          // First-run PC VR prompt: first headset connection, no
-          // WiVRn app on it yet, user has not said no. Install sets
-          // up the server (bundled in the app), the headset app,
-          // and the USB link, so afterwards it is just Start + tap.
-          if (dev != null && s.wivrnClientVersion == null && !s.wivrnDeclined)
+          // First-run PC VR prompt: first headset connection, the
+          // setup check has finished and found no WiVRn app on it,
+          // user has not said no. Install sets up the server
+          // (bundled in the app), the headset app, and the USB
+          // link, so afterwards it is just Start + tap.
+          if (dev != null && s.wivrnSetupKnown && s.wivrnClientVersion == null && !s.wivrnDeclined)
             Card(
               child: ListTile(
                 leading: const Icon(Icons.view_in_ar),

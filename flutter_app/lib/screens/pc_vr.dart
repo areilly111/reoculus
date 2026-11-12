@@ -85,7 +85,10 @@ class _PcVrScreenState extends State<PcVrScreen> {
         const SizedBox(height: 12),
         // Refused or not installed yet: the whole section is
         // greyed out except an Install button that reopens setup.
-        if (d != null && (widget.state.wivrnDeclined || (widget.state.wivrnClientVersion == null && _clientVersion == null))) ...[
+        // The "not installed" branch needs a finished check:
+        // before the check runs, a null client version means
+        // "not checked yet", and the check retried on failure.
+        if (d != null && (widget.state.wivrnDeclined || (widget.state.wivrnSetupKnown && widget.state.wivrnClientVersion == null && _clientVersion == null))) ...[
           Card(
             child: ListTile(
               leading: const Icon(Icons.view_in_ar),
@@ -161,7 +164,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
           const SizedBox(height: 12),
           Row(children: [
             FilledButton.icon(
-              onPressed: _busy || !installed || running || widget.state.wivrnDeclined || (widget.state.wivrnClientVersion == null && _clientVersion == null)
+              onPressed: _busy || !installed || running || widget.state.wivrnDeclined || (widget.state.wivrnSetupKnown && widget.state.wivrnClientVersion == null && _clientVersion == null)
                   ? null
                   : () => _act(() async {
                         final r = await widget.state.backend.wivrnStart();
