@@ -615,3 +615,83 @@ class SingularityPreflight {
         summary: (j['summary'] ?? '').toString(),
       );
 }
+
+class SingularityDownload {
+  final String id, name, detail, source, version, onHeadset;
+  final bool downloadable, downloaded;
+  final String? file, sha256;
+  final int sizeBytes;
+  const SingularityDownload({required this.id, required this.name, required this.detail, required this.source, required this.version, required this.onHeadset, required this.downloadable, required this.downloaded, this.file, this.sha256, required this.sizeBytes});
+  factory SingularityDownload.fromJson(Map<String, dynamic> j) => SingularityDownload(
+        id: (j['id'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        detail: (j['detail'] ?? '').toString(),
+        source: (j['source'] ?? '').toString(),
+        version: (j['version'] ?? '').toString(),
+        onHeadset: (j['on_headset'] ?? '').toString(),
+        downloadable: j['downloadable'] == true,
+        downloaded: j['downloaded'] == true,
+        file: j['file']?.toString(),
+        sha256: j['sha256']?.toString(),
+        sizeBytes: _optInt(j['size_bytes']) ?? 0,
+      );
+}
+
+class FridaStatusInfo {
+  final bool downloaded, pushed, running;
+  final String? file, sha256;
+  final int sizeBytes;
+  const FridaStatusInfo({required this.downloaded, required this.pushed, required this.running, this.file, this.sha256, required this.sizeBytes});
+  factory FridaStatusInfo.fromJson(Map<String, dynamic> j) => FridaStatusInfo(
+        downloaded: j['downloaded'] == true,
+        pushed: j['pushed'] == true,
+        running: j['running'] == true,
+        file: j['file']?.toString(),
+        sha256: j['sha256']?.toString(),
+        sizeBytes: _optInt(j['size_bytes']) ?? 0,
+      );
+}
+
+class HostsStatusInfo {
+  final bool downloaded, applied;
+  final String? file, sha256;
+  final int domains, sizeBytes, systemLines, moduleDomains;
+  const HostsStatusInfo({required this.downloaded, required this.applied, this.file, this.sha256, required this.domains, required this.sizeBytes, required this.systemLines, required this.moduleDomains});
+  factory HostsStatusInfo.fromJson(Map<String, dynamic> j) => HostsStatusInfo(
+        downloaded: j['downloaded'] == true,
+        applied: j['applied'] == true,
+        file: j['file']?.toString(),
+        sha256: j['sha256']?.toString(),
+        domains: _optInt(j['domains']) ?? 0,
+        sizeBytes: _optInt(j['size_bytes']) ?? 0,
+        systemLines: _optInt(j['system_lines']) ?? 0,
+        moduleDomains: _optInt(j['module_domains']) ?? 0,
+      );
+}
+
+class OtaStatusInfo {
+  final bool blocked, updaterDisabled;
+  final String? downloadUrl, updateServerUrl;
+  const OtaStatusInfo({required this.blocked, required this.updaterDisabled, this.downloadUrl, this.updateServerUrl});
+  factory OtaStatusInfo.fromJson(Map<String, dynamic> j) => OtaStatusInfo(
+        blocked: j['blocked'] == true,
+        updaterDisabled: j['updater_disabled'] == true,
+        downloadUrl: j['download_url']?.toString(),
+        updateServerUrl: j['update_server_url']?.toString(),
+      );
+}
+
+class UxpSetting {
+  final String key, label, detail;
+  final String? value;
+  final bool isToggle, enabled;
+  const UxpSetting({required this.key, required this.label, required this.detail, this.value, required this.isToggle, required this.enabled});
+  factory UxpSetting.fromJson(Map<String, dynamic> j) => UxpSetting(
+        key: (j['key'] ?? '').toString(),
+        label: (j['label'] ?? '').toString(),
+        detail: (j['detail'] ?? '').toString(),
+        value: j['value']?.toString(),
+        isToggle: j['is_toggle'] == true,
+        enabled: j['enabled'] == true,
+      );
+}

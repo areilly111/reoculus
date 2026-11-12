@@ -70,6 +70,21 @@ abstract class BackendService {
   Future<Map<String, dynamic>> singularityDownload();
   Future<BackendResult> singularityInstall(String serial);
   Future<RootStatus> singularityVerify(String serial);
+  Future<List<SingularityDownload>> singularityDownloads(String serial);
+  Future<Map<String, dynamic>> singularityDownloadFrida();
+  Future<Map<String, dynamic>> singularityDownloadHosts();
+  Future<FridaStatusInfo> fridaStatus(String serial);
+  Future<FridaStatusInfo> fridaPush(String serial);
+  Future<FridaStatusInfo> fridaStart(String serial);
+  Future<FridaStatusInfo> fridaStop(String serial);
+  Future<HostsStatusInfo> hostsStatus(String serial);
+  Future<HostsStatusInfo> hostsApply(String serial);
+  Future<HostsStatusInfo> hostsRemove(String serial);
+  Future<OtaStatusInfo> otaStatus(String serial);
+  Future<OtaStatusInfo> otaSet(String serial, bool blocked);
+  Future<List<UxpSetting>> uxpList(String serial);
+  Future<UxpSetting?> uxpSet(String serial, String key, String value);
+  Future<BackendResult> restartHome(String serial);
   Future<Map<String, dynamic>?> snapshotCreate(String serial, String name, {String? profile});
   Future<List<SnapshotEntry>> snapshotList();
   Future<RestoreReport?> snapshotRestore(String serial, String path, {bool dryRun = false, bool confirm = false});
@@ -492,6 +507,102 @@ class RealBackend implements BackendService {
     if (j['ok'] != true) return RootStatus.notRooted;
     return RootStatus.fromJson(j);
   }
+
+  @override
+  Future<List<SingularityDownload>> singularityDownloads(String serial) async {
+    final j = await _run(['singularity', 'downloads', '--serial', serial]);
+    final list = (j['downloads'] as List?) ?? [];
+    return list.map((e) => SingularityDownload.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> singularityDownloadFrida() async =>
+      await _run(['singularity', 'download-frida']);
+
+  @override
+  Future<Map<String, dynamic>> singularityDownloadHosts() async =>
+      await _run(['singularity', 'download-hosts']);
+
+  @override
+  Future<FridaStatusInfo> fridaStatus(String serial) async {
+    final j = await _run(['singularity', 'frida', 'status', '--serial', serial]);
+    if (j['ok'] != true) return const FridaStatusInfo(downloaded: false, pushed: false, running: false, sizeBytes: 0);
+    return FridaStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<FridaStatusInfo> fridaPush(String serial) async {
+    final j = await _run(['singularity', 'frida', 'push', '--serial', serial]);
+    if (j['ok'] != true) return const FridaStatusInfo(downloaded: false, pushed: false, running: false, sizeBytes: 0);
+    return FridaStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<FridaStatusInfo> fridaStart(String serial) async {
+    final j = await _run(['singularity', 'frida', 'start', '--serial', serial]);
+    if (j['ok'] != true) return const FridaStatusInfo(downloaded: false, pushed: false, running: false, sizeBytes: 0);
+    return FridaStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<FridaStatusInfo> fridaStop(String serial) async {
+    final j = await _run(['singularity', 'frida', 'stop', '--serial', serial]);
+    if (j['ok'] != true) return const FridaStatusInfo(downloaded: false, pushed: false, running: false, sizeBytes: 0);
+    return FridaStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<HostsStatusInfo> hostsStatus(String serial) async {
+    final j = await _run(['singularity', 'hosts', 'status', '--serial', serial]);
+    if (j['ok'] != true) return const HostsStatusInfo(downloaded: false, applied: false, domains: 0, sizeBytes: 0, systemLines: 0, moduleDomains: 0);
+    return HostsStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<HostsStatusInfo> hostsApply(String serial) async {
+    final j = await _run(['singularity', 'hosts', 'apply', '--serial', serial]);
+    if (j['ok'] != true) return const HostsStatusInfo(downloaded: false, applied: false, domains: 0, sizeBytes: 0, systemLines: 0, moduleDomains: 0);
+    return HostsStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<HostsStatusInfo> hostsRemove(String serial) async {
+    final j = await _run(['singularity', 'hosts', 'remove', '--serial', serial]);
+    if (j['ok'] != true) return const HostsStatusInfo(downloaded: false, applied: false, domains: 0, sizeBytes: 0, systemLines: 0, moduleDomains: 0);
+    return HostsStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<OtaStatusInfo> otaStatus(String serial) async {
+    final j = await _run(['singularity', 'ota', 'status', '--serial', serial]);
+    if (j['ok'] != true) return const OtaStatusInfo(blocked: false, updaterDisabled: false);
+    return OtaStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<OtaStatusInfo> otaSet(String serial, bool blocked) async {
+    final j = await _run(['singularity', 'ota', blocked ? 'block' : 'allow', '--serial', serial]);
+    if (j['ok'] != true) return const OtaStatusInfo(blocked: false, updaterDisabled: false);
+    return OtaStatusInfo.fromJson(j);
+  }
+
+  @override
+  Future<List<UxpSetting>> uxpList(String serial) async {
+    final j = await _run(['singularity', 'uxp', 'list', '--serial', serial]);
+    final list = (j['settings'] as List?) ?? [];
+    return list.map((e) => UxpSetting.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<UxpSetting?> uxpSet(String serial, String key, String value) async {
+    final j = await _run(['singularity', 'uxp', 'set', '--serial', serial, '--key', key, '--value', value]);
+    if (j['ok'] != true) return null;
+    return UxpSetting.fromJson(j);
+  }
+
+  @override
+  Future<BackendResult> restartHome(String serial) async =>
+      _toResult(await _run(['singularity', 'restart-home', '--serial', serial]));
 
   @override
   Future<Map<String, dynamic>?> snapshotCreate(String serial, String name, {String? profile}) async {

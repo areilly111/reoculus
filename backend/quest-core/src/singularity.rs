@@ -62,7 +62,7 @@ pub struct DownloadReport {
     pub verification: String,
 }
 
-fn cache_dir() -> Result<PathBuf> {
+pub(crate) fn cache_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME")
         .map(PathBuf::from)
         .map_err(|_| Error("no HOME set, cannot find the download cache".into()))?;
@@ -186,7 +186,7 @@ pub fn pick_release_assets(text: &str) -> Result<(String, String, Option<String>
     Ok((version, format!("{apk_name}|{apk_url}"), checksum))
 }
 
-fn curl(url: &str, out: &PathBuf) -> Result<()> {
+pub(crate) fn curl(url: &str, out: &PathBuf) -> Result<()> {
     let st = std::process::Command::new("curl")
         .args(["-fsSL", "-A", "ReOculus", url, "-o"])
         .arg(out)
@@ -215,7 +215,7 @@ fn curl_text(url: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-fn sha256_file(path: &PathBuf) -> Result<String> {
+pub(crate) fn sha256_file(path: &PathBuf) -> Result<String> {
     use sha2::Digest;
     let mut f = std::fs::File::open(path)?;
     let mut h = sha2::Sha256::new();

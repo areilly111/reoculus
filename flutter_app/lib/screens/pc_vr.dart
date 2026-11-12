@@ -77,7 +77,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const SectionTitle('PC VR (WiVRn)'),
+        const SectionTitleWithInfo('PC VR (WiVRn)', infoTitle: 'PC VR (WiVRn)', infoBody: 'WiVRn streams PC VR games from this computer to the headset, over Wi-Fi or USB. The server on this computer and the WiVRn app on the headset must be the same version (26.9). This screen starts and stops the server and picks the video encoder. The games themselves run on the PC, the headset just shows them.'),
         const Text(
           'Streams PC VR games from this computer to your Quest 2 over Wi-Fi or USB, using WiVRn 26.9. Linux only, no Windows, no SteamVR. The server and the WiVRn app on the headset must be the same version.',
           style: TextStyle(fontSize: 13),
@@ -128,7 +128,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
             const Text('Install that in a terminal, then tap Refresh. The KDE runtime is already on this computer, so it is a small download.', style: TextStyle(fontSize: 13)),
           ],
           const SizedBox(height: 16),
-          const SectionTitle('Server'),
+          const SectionTitleWithInfo('Server', infoTitle: 'Server', infoBody: 'The encoder turns the game picture into video to send to the headset. NVENC uses the NVIDIA card and is the best choice on this PC. The codec is the video format: H.265 is smaller and looks better, H.264 is the fallback. The Quest 2 cannot decode AV1. Bitrate and refresh rate are set in the WiVRn app on the headset, not here. Start at 72 Hz.'),
           Row(children: [
             DropdownButton<String>(
               value: _encoder,

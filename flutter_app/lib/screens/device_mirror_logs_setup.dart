@@ -40,6 +40,10 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   List<SnapshotEntry> _snapshots = [];
   HealthInfo? _health;
   bool _healthLoading = false;
+  List<SingularityDownload> _downloads = [];
+  OtaStatusInfo? _ota;
+  List<UxpSetting> _uxp = [];
+  bool _singExtrasLoading = false;
 
   @override
   void initState() {
@@ -49,6 +53,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     _loadDeviceBackups();
     _loadHomes();
     _loadSnapshots();
+    _loadSingularityExtras();
   }
 
   Future<void> _loadDeviceBackups() async {
@@ -86,6 +91,137 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
       _health = null;
     }
     if (mounted) setState(() => _healthLoading = false);
+  }
+
+  /// Singularity downloads, update blocker, and dock settings for
+  /// the Rooted section. Each call fails soft, so one missing
+  /// answer never hides the rest.
+  Future<void> _loadSingularityExtras() async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    setState(() => _singExtrasLoading = true);
+    try {
+      _downloads = await widget.state.backend.singularityDownloads(serial);
+    } catch (_) {
+      _downloads = [];
+    }
+    try {
+      _ota = await widget.state.backend.otaStatus(serial);
+    } catch (_) {
+      _ota = null;
+    }
+    try {
+      _uxp = await widget.state.backend.uxpList(serial);
+    } catch (_) {
+      _uxp = [];
+    }
+    if (mounted) setState(() => _singExtrasLoading = false);
+  }
+
+  Widget _downloadRow(SingularityDownload d) {
+    final serial = widget.state.selectedDevice?.serial;
+    final buttons = <Widget>[];
+    Future<void> reload() async {
+      await _loadSingularityExtras();
+    }
+    if (d.id == 'singularity') {
+      buttons.add(FilledButton(
+        onPressed: serial == null ? null : () async {
+          final r = await widget.state.backend.singularityDownload();
+          if (mounted) showResult(context, r['ok'] == true, r['ok'] == true ? 'Singularity ${(r['version'] ?? '').toString()} downloaded.' : (r['error'] ?? 'Download failed.').toString());
+          await reload();
+        },
+        child: const Text('Download'),
+      ));
+      buttons.add(OutlinedButton(
+        onPressed: (serial == null || !d.downloaded) ? null : () async {
+          final r = await widget.state.backend.singularityInstall(serial);
+          if (mounted) showResult(context, r.ok, r.ok ? 'Singularity installed. Open it on the headset and press Root Now.' : r.message);
+          await reload();
+        },
+        child: const Text('Install'),
+      ));
+    } else if (d.id == 'frida') {
+      buttons.add(FilledButton(
+        onPressed: serial == null ? null : () async {
+          final r = await widget.state.backend.singularityDownloadFrida();
+          if (mounted) showResult(context, r['ok'] == true, r['ok'] == true ? 'Frida server ${(r['version'] ?? '').toString()} downloaded.' : (r['error'] ?? 'Download failed.').toString());
+          await reload();
+        },
+        child: const Text('Download'),
+      ));
+      buttons.add(OutlinedButton(
+        onPressed: (serial == null || !d.downloaded) ? null : () async {
+          final st = await widget.state.backend.fridaPush(serial);
+          if (mounted) showResult(context, st.pushed, st.pushed ? 'Frida server is on the headset.' : 'Push failed.');
+          await reload();
+        },
+        child: const Text('Push to headset'),
+      ));
+      if (d.onHeadset.contains('running')) {
+        buttons.add(OutlinedButton(
+          onPressed: serial == null ? null : () async {
+            await widget.state.backend.fridaStop(serial);
+            await reload();
+          },
+          child: const Text('Stop'),
+        ));
+      } else {
+        buttons.add(OutlinedButton(
+          onPressed: (serial == null || !d.onHeadset.startsWith('on headset')) ? null : () async {
+            final st = await widget.state.backend.fridaStart(serial);
+            if (mounted) showResult(context, st.running, st.running ? 'Frida server is running.' : 'Frida did not start.');
+            await reload();
+          },
+          child: const Text('Start'),
+        ));
+      }
+    } else if (d.id == 'hosts') {
+      buttons.add(FilledButton(
+        onPressed: serial == null ? null : () async {
+          final r = await widget.state.backend.singularityDownloadHosts();
+          if (mounted) showResult(context, r['ok'] == true, r['ok'] == true ? 'Blocklist downloaded (${(r['domains'] ?? 0).toString()} domains).' : (r['error'] ?? 'Download failed.').toString());
+          await reload();
+        },
+        child: const Text('Download'),
+      ));
+      if (d.onHeadset.startsWith('applied')) {
+        buttons.add(OutlinedButton(
+          onPressed: serial == null ? null : () async {
+            await widget.state.backend.hostsRemove(serial);
+            if (mounted) showResult(context, true, 'Blocklist removed. It stops applying after the next reboot.');
+            await reload();
+          },
+          child: const Text('Remove blocker'),
+        ));
+      } else {
+        buttons.add(OutlinedButton(
+          onPressed: (serial == null || !d.downloaded) ? null : () async {
+            final st = await widget.state.backend.hostsApply(serial);
+            if (mounted) showResult(context, st.applied, st.applied ? 'Blocklist applied (${st.moduleDomains} domains). It takes effect after a reboot.' : 'Could not apply the blocklist.');
+            await reload();
+          },
+          child: const Text('Apply blocker'),
+        ));
+      }
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${d.name} (${d.version})', style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(d.detail, style: const TextStyle(fontSize: 13)),
+          const SizedBox(height: 4),
+          Text('On headset: ${d.onHeadset}. Source: ${d.source}', style: const TextStyle(fontSize: 13)),
+          if (d.downloaded && d.sha256 != null) Text('SHA-256: ${d.sha256!.substring(0, 16)}...', style: const TextStyle(fontSize: 13)),
+          if (buttons.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: buttons),
+          ],
+        ]),
+      ),
+    );
   }
 
   Future<void> _apply(String key, String value, String plain) async {
@@ -160,7 +296,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               ),
             ),
           ],
-          const SectionTitle('Saved profiles', subtitle: 'Pick one and it is applied now and again on every connect.'),
+          const SectionTitleWithInfo('Saved profiles', subtitle: 'Pick one and it is applied now and again on every connect.', infoTitle: 'Saved profiles', infoBody: 'A profile is a saved set of screen speed, CPU and GPU level. Pick one and it is applied to the headset now, and again every time you connect it. The profile is saved on this computer, per headset.'),
           Wrap(spacing: 8, children: s.profiles.map((p) => ChoiceChip(
                 label: Text('${p.name} (${p.refreshRate} Hz)'),
                 selected: s.activeProfile == p.name,
@@ -279,7 +415,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
             icon: const Icon(Icons.wifi),
             label: const Text('Open Wi-Fi settings on headset'),
           ),
-          const SectionTitle('Device backups', subtitle: 'Settings, Guardian data, Wi-Fi configs, and an inventory of your apps. Apps themselves live in the library, not in the device backup.'),
+          const SectionTitleWithInfo('Device backups', subtitle: 'Settings, Guardian data, Wi-Fi configs, and an inventory of your apps. Apps themselves live in the library, not in the device backup.', infoTitle: 'Device backups', infoBody: 'A device backup saves the headset\'s settings, Guardian play area, Wi-Fi passwords, and a list of which apps are installed. The apps themselves are not copied into it. Restoring it puts the settings back; the apps come back from their own backups in the library.'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -312,7 +448,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               ]),
             ),
           ),
-          const SectionTitle('Headset snapshots', subtitle: 'A named save point for the whole headset: settings, Guardian data, Wi-Fi configs, an inventory of your apps, and the settings profile that was on. Apps reinstall from their library backups, they are not copied into the snapshot.'),
+          const SectionTitleWithInfo('Headset snapshots', subtitle: 'A named save point for the whole headset: settings, Guardian data, Wi-Fi configs, an inventory of your apps, and the settings profile that was on. Apps reinstall from their library backups, they are not copied into the snapshot.', infoTitle: 'Headset snapshots', infoBody: 'A snapshot is a save point for the whole headset, like a save file in a game. It keeps the settings, Guardian area, Wi-Fi, the list of apps, and which settings profile was on. Restoring it puts all of that back. The apps themselves are reinstalled from the library, so keep your app backups too.'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -360,7 +496,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               ]),
             ),
           ),
-          const SectionTitle('Homes', subtitle: 'The home environments on this headset. The active one is marked. Switching uses the headset\u2019s own home command; if it refuses, open the headset\u2019s Home settings and pick there.'),
+          const SectionTitleWithInfo('Homes', subtitle: 'The home environments on this headset. The active one is marked. Switching uses the headset\u2019s own home command; if it refuses, open the headset\u2019s Home settings and pick there.', infoTitle: 'Homes', infoBody: 'A home is the place you land in when the headset starts: the 3D room and the dock you launch apps from. The active one is marked. The headset itself decides whether the switch is allowed; on current firmware it refuses the direct command, so the button opens the home settings on the headset and you pick there.'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -400,7 +536,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               ]),
             ),
           ),
-          const SectionTitle('Battery and health', subtitle: 'Battery, storage, uptime, and when this headset was last backed up.'),
+          const SectionTitleWithInfo('Battery and health', subtitle: 'Battery, storage, uptime, and when this headset was last backed up.', infoTitle: 'Battery and health', infoBody: 'A quick read of the headset: how much battery is left and how warm it is, how much storage is used, how long it has been on, and when the last device backup was taken. Anything that looks wrong here is worth a look before you start a long session.'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -475,8 +611,80 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                       const SizedBox(height: 8),
                       const Text('System app removal is in the Apps screen: open an app, tap More, then Remove system app. It needs root, and it fully removes that system app.'),
                       const SizedBox(height: 12),
-                      const Text('Pause Horizon OS updates', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const Text('Do not use the old toggle here: Android refuses to turn off com.oculus.updater, it is a protected package, and turning it off can break the home menu. To pause updates, use Singularity on the headset itself, its Update Engine disabler defers updates instead of turning the updater off.'),
+                      Row(children: [
+                        const Expanded(child: Text('Pause Horizon OS updates', style: TextStyle(fontWeight: FontWeight.bold))),
+                        InfoButton('Pause Horizon OS updates', 'Singularity pauses updates by pointing the update server at the headset itself, so no update can download. Nothing is turned off: the updater app stays as it is, because the home menu may need it. Turning this off deletes that setting and updates can download again.'),
+                      ]),
+                      SwitchListTile(
+                        title: const Text('Pause updates'),
+                        subtitle: Text(_ota == null ? 'Checking the update settings...' : (_ota!.blocked ? 'On. The headset cannot reach the update server.' : 'Off. The headset can download updates.')),
+                        value: _ota?.blocked ?? false,
+                        onChanged: (v) async {
+                          final serial = widget.state.selectedDevice?.serial;
+                          if (serial == null) return;
+                          final st = await widget.state.backend.otaSet(serial, v);
+                          setState(() => _ota = st);
+                          if (mounted) showResult(context, true, v ? 'Updates are paused.' : 'Updates are allowed again.');
+                        },
+                      ),
+                      if (_ota != null)
+                        Text(_ota!.updaterDisabled ? 'Updater app: turned off by Singularity. ReOculus leaves it alone.' : 'Updater app: on.', style: const TextStyle(fontSize: 13)),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        const Expanded(child: Text('Singularity downloads', style: TextStyle(fontWeight: FontWeight.bold))),
+                        InfoButton('Singularity downloads', 'The files Singularity uses, downloaded from its own GitHub repo. Singularity is the root app. Frida is a researcher tool for inspecting apps on the headset. The blocklist is Singularity\'s list of Meta domains. Nothing here is bundled with ReOculus, it is downloaded when you tap Download.'),
+                      ]),
+                      const SizedBox(height: 4),
+                      const Text('Singularity is closed source. ReOculus never bundles it or copies its code, it downloads what the author publishes.', style: TextStyle(fontSize: 13)),
+                      const SizedBox(height: 8),
+                      if (_singExtrasLoading) const Text('Loading downloads...'),
+                      ..._downloads.map((d) => _downloadRow(d)),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        const Expanded(child: Text('Dock and home settings (Singularity)', style: TextStyle(fontWeight: FontWeight.bold))),
+                        InfoButton('Dock and home settings', 'These are the dock settings Singularity leaves on the headset. They change the home dock, like the battery percent and which buttons show. They usually take effect right away; if one does not show, restart the home screen below. The ones listed as info only are ones ReOculus does not change, because what values they accept is not written down anywhere public.'),
+                      ]),
+                      const SizedBox(height: 8),
+                      ..._uxp.where((u) => u.isToggle).map((u) => SwitchListTile(
+                            title: Text(u.label),
+                            subtitle: Text(u.detail),
+                            value: u.enabled,
+                            onChanged: (v) async {
+                              final serial = widget.state.selectedDevice?.serial;
+                              if (serial == null) return;
+                              final set = await widget.state.backend.uxpSet(serial, u.key, v ? '1' : '0');
+                              if (set != null) {
+                                setState(() {
+                                  final i = _uxp.indexWhere((e) => e.key == u.key);
+                                  if (i >= 0) _uxp[i] = set;
+                                });
+                              }
+                            },
+                          )),
+                      ..._uxp.where((u) => !u.isToggle).map((u) => Text('${u.label}: ${u.value ?? 'not set'}', style: const TextStyle(fontSize: 13))),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final serial = widget.state.selectedDevice?.serial;
+                          if (serial == null) return;
+                          final go = await showDialog<bool>(
+                            context: context,
+                            builder: (d) => AlertDialog(
+                              title: const Text('Restart the home screen?'),
+                              content: const Text('The home screen closes for a few seconds and comes back with the new dock settings.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.of(d).pop(false), child: const Text('Cancel')),
+                                FilledButton(onPressed: () => Navigator.of(d).pop(true), child: const Text('Restart')),
+                              ],
+                            ),
+                          );
+                          if (go != true) return;
+                          final r = await widget.state.backend.restartHome(serial);
+                          if (mounted) showResult(context, r.ok, r.message);
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Restart home UI'),
+                      ),
                     ]),
                   ),
                 ],
@@ -691,7 +899,7 @@ class _MirrorScreenState extends State<MirrorScreen> {
             ]),
           ),
         ),
-        const SectionTitle('Quality', subtitle: 'Picked automatically, no setting to change. USB uses Balanced, Wi-Fi uses Performance, so the mirror stays smooth instead of glitching.'),
+        const SectionTitleWithInfo('Quality', subtitle: 'Picked automatically, no setting to change. USB uses Balanced, Wi-Fi uses Performance, so the mirror stays smooth instead of glitching.', infoTitle: 'Mirror quality', infoBody: 'The mirror quality is picked for you, there is no setting to change. USB uses Balanced (1920, 8M, 60) and Wi-Fi uses Performance (1280, 4M, 30), because Wi-Fi cannot keep up with the higher one and the picture starts glitching. If the picture smears after you open the Quest menu, tap Restart mirror.'),
         const SectionTitle('Record and screenshots'),
         Row(children: [
           OutlinedButton.icon(
@@ -1100,7 +1308,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
           ]),
           const SectionTitle('About'),
-          const Text('ReOculus 0.2.17. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
+          const Text('ReOculus 0.2.18. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
           const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
           const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
           const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),

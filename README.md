@@ -163,7 +163,7 @@ A few things people usually ask about, so let us get them out of the way:
 
 ## 📋 Status
 
-**0.2.17** (2026-11-12): Home manager (list and switch home environments), Singularity install wizard (preflight, backup, download, install, verify), headset snapshots (a named save point for the whole headset, profile included), multi-headset support (each headset keeps its own settings profile and WiVRn choice), battery and health dashboard, and an APK analyzer (what an APK is before you install it). The WiVRn first-run card only appears after the setup check has actually finished. Setup Backend is read-only (auto-connect). The app is now called ReOculus. See the [Releases](../../releases) page for each version's notes.
+**0.2.18** (2026-11-12): Singularity downloads and rooted settings in the Rooted section: the Singularity APK, the Frida server (17.17.0), and the Meta domain blocklist (74 domains) download from Singularity's own GitHub repo, with install, push, start/stop, and apply/remove on the headset; the update pause is now a real toggle (it points the update server at the headset itself, the updater app is left alone); dock and home settings (battery percent, hiding dock buttons) as switches, with a Restart home UI button. Pages also got small "i" info buttons on the sections people ask about. The app is now called ReOculus. See the [Releases](../../releases) page for each version's notes.
 
 ## ⚖️ License and credits
 

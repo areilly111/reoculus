@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, device_backup, devices, files, gallery, health, homes, library, media, settings, singularity, snapshot, update_block, wireless, wivrn};
+use quest_core::{apk_analyzer, apps, backup, device_backup, devices, files, gallery, health, homes, library, media, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -165,6 +165,126 @@ enum SingularityCmd {
     Verify {
         #[arg(long)]
         serial: String,
+    },
+    /// List the Singularity downloads (APK, Frida, blocklist) and
+    /// their state on this PC and on the headset.
+    Downloads {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Download the Frida server binary (17.17.0) from the
+    /// Singularity repo and check its size.
+    DownloadFrida,
+    /// Download the Meta domain blocklist from the Singularity
+    /// repo and count its domains.
+    DownloadHosts,
+    /// Frida server on the headset: status, push, start, stop.
+    Frida {
+        #[command(subcommand)]
+        cmd: FridaCmd,
+    },
+    /// The Meta domain blocklist on the headset: status, apply,
+    /// remove.
+    Hosts {
+        #[command(subcommand)]
+        cmd: HostsCmd,
+    },
+    /// The update disabler: status, block, allow.
+    Ota {
+        #[command(subcommand)]
+        cmd: OtaCmd,
+    },
+    /// Dock and UI (uxpatcher) settings: list, set.
+    Uxp {
+        #[command(subcommand)]
+        cmd: UxpCmd,
+    },
+    /// Restart the home screen (vrshell) so new dock settings
+    /// take effect.
+    RestartHome {
+        #[arg(long)]
+        serial: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FridaCmd {
+    /// Show the Frida state (downloaded, on the headset, running).
+    Status {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Push the downloaded Frida server to the headset.
+    Push {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Start the Frida server on the headset.
+    Start {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Stop the Frida server on the headset.
+    Stop {
+        #[arg(long)]
+        serial: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum HostsCmd {
+    /// Show the blocklist state (downloaded, applied).
+    Status {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Apply the blocklist through the Magisk systemless-hosts
+    /// module (takes effect after a reboot).
+    Apply {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Remove the blocklist from the Magisk hosts module.
+    Remove {
+        #[arg(long)]
+        serial: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum OtaCmd {
+    /// Show whether updates are blocked.
+    Status {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Block updates (point the OTA settings at localhost).
+    Block {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Allow updates again (delete the OTA overrides).
+    Allow {
+        #[arg(long)]
+        serial: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum UxpCmd {
+    /// List the dock and UI settings and their current values.
+    List {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Set one dock or UI toggle (value 0 or 1).
+    Set {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        key: String,
+        #[arg(long)]
+        value: String,
     },
 }
 
@@ -814,6 +934,78 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             SingularityCmd::Verify { serial } => {
                 let r = singularity::verify(t.as_ref(), serial)?;
                 Ok(serde_json::to_value(r)?)
+            }
+            SingularityCmd::Downloads { serial } => {
+                let items = singularity_settings::downloads_list(t.as_ref(), serial)?;
+                Ok(json!({ "downloads": items }))
+            }
+            SingularityCmd::DownloadFrida => {
+                let r = singularity_settings::download_frida()?;
+                Ok(serde_json::to_value(r)?)
+            }
+            SingularityCmd::DownloadHosts => {
+                let r = singularity_settings::download_hosts()?;
+                Ok(serde_json::to_value(r)?)
+            }
+            SingularityCmd::Frida { cmd } => match cmd {
+                FridaCmd::Status { serial } => {
+                    let r = singularity_settings::frida_status(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+                FridaCmd::Push { serial } => {
+                    let r = singularity_settings::frida_push(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+                FridaCmd::Start { serial } => {
+                    let r = singularity_settings::frida_start(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+                FridaCmd::Stop { serial } => {
+                    let r = singularity_settings::frida_stop(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+            },
+            SingularityCmd::Hosts { cmd } => match cmd {
+                HostsCmd::Status { serial } => {
+                    let r = singularity_settings::hosts_status(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+                HostsCmd::Apply { serial } => {
+                    let r = singularity_settings::hosts_apply(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+                HostsCmd::Remove { serial } => {
+                    let r = singularity_settings::hosts_remove(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+            },
+            SingularityCmd::Ota { cmd } => match cmd {
+                OtaCmd::Status { serial } => {
+                    let r = singularity_settings::ota_status(t.as_ref(), serial)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+                OtaCmd::Block { serial } => {
+                    let r = singularity_settings::ota_set(t.as_ref(), serial, true)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+                OtaCmd::Allow { serial } => {
+                    let r = singularity_settings::ota_set(t.as_ref(), serial, false)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+            },
+            SingularityCmd::Uxp { cmd } => match cmd {
+                UxpCmd::List { serial } => {
+                    let items = singularity_settings::uxp_list(t.as_ref(), serial)?;
+                    Ok(json!({ "settings": items }))
+                }
+                UxpCmd::Set { serial, key, value } => {
+                    let r = singularity_settings::uxp_set(t.as_ref(), serial, key, value)?;
+                    Ok(serde_json::to_value(r)?)
+                }
+            },
+            SingularityCmd::RestartHome { serial } => {
+                let m = singularity_settings::restart_home(t.as_ref(), serial)?;
+                Ok(json!({ "message": m }))
             }
         },
         Commands::Snapshot(a) => match &a.cmd {

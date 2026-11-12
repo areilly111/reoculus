@@ -25,6 +25,56 @@ class SectionTitle extends StatelessWidget {
       );
 }
 
+/// A small "i" button next to a heading. Tapping it opens a plain
+/// language note about that section, for anyone who is unsure what
+/// it does. Use it wherever a setting or feature is not obvious.
+class InfoButton extends StatelessWidget {
+  final String title;
+  final String body;
+  const InfoButton(this.title, this.body, {super.key});
+  @override
+  Widget build(BuildContext context) => IconButton(
+        icon: const Icon(Icons.info_outline, size: 20),
+        tooltip: title,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (d) => AlertDialog(
+            title: Text(title),
+            content: Text(body),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(d).pop(), child: const Text('Got it')),
+            ],
+          ),
+        ),
+      );
+}
+
+/// A section heading with an info button. The button is the small
+/// "i" that explains the section in plain language.
+class SectionTitleWithInfo extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final String infoTitle;
+  final String infoBody;
+  const SectionTitleWithInfo(this.title, {this.subtitle, required this.infoTitle, required this.infoBody, super.key});
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+            InfoButton(infoTitle, infoBody),
+          ]),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(subtitle!, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ]),
+      );
+}
+
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;

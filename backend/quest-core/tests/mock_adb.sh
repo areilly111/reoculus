@@ -6,6 +6,21 @@
 # Strip an optional "-s <serial>" prefix.
 if [ "$1" = "-s" ]; then shift 2; fi
 
+# Stateful mock state (settings puts/deletes, hosts module, frida).
+# One file per key, so parallel tests using different keys do not
+# race. Tests clean their own key file before starting.
+STATE_DIR="/tmp/questcompanion-mock-state"
+state_get() { # $1=key $2=default
+  local f="$STATE_DIR/settings_$1"
+  if [ -f "$f" ]; then cat "$f"; else printf '%s\n' "$2"; fi
+}
+state_put() { # $1=key $2=value
+  mkdir -p "$STATE_DIR"; printf '%s' "$2" > "$STATE_DIR/settings_$1"
+}
+state_del() { # $1=key
+  rm -f "$STATE_DIR/settings_$1"
+}
+
 case "$1" in
   devices)
     echo "List of devices attached"
@@ -96,8 +111,57 @@ case "$1" in
       "pm uninstall"*) echo "Success" ;;
       "pm uninstall -k"*) echo "Success" ;;
       "setprop"*) : ;;
+      "settings get global ota_download_url") state_get ota_download_url "null" ;;
+      "settings get global ota_update_server_url") state_get ota_update_server_url "null" ;;
+      "settings get global uxpatcher_battery_percent") state_get uxpatcher_battery_percent "1" ;;
+      "settings get global uxpatcher_hide_passthrough") state_get uxpatcher_hide_passthrough "0" ;;
+      "settings get global uxpatcher_hide_profile") state_get uxpatcher_hide_profile "0" ;;
+      "settings get global uxpatcher_hide_battery_icon") state_get uxpatcher_hide_battery_icon "0" ;;
+      "settings get global uxpatcher_hide_notif_badge") state_get uxpatcher_hide_notif_badge "0" ;;
+      "settings get global uxpatcher_dock_library_first") state_get uxpatcher_dock_library_first "0" ;;
+      "settings get global uxpatcher_dock_apps_left") state_get uxpatcher_dock_apps_left "0" ;;
+      "settings get global uxpatcher_bg_enabled") state_get uxpatcher_bg_enabled "1" ;;
+      "settings get global uxpatcher_dock_order") state_get uxpatcher_dock_order "profile,qs,notif,pt" ;;
+      "settings get global uxpatcher_accent_color") state_get uxpatcher_accent_color "off" ;;
+      "settings get global uxpatcher_text_color") state_get uxpatcher_text_color "off" ;;
+      "settings get global uxpatcher_bg_color") state_get uxpatcher_bg_color "0" ;;
+      "settings get global uxpatcher_pin_limit") state_get uxpatcher_pin_limit "1" ;;
+      "settings get global uxpatcher_gamepad_unlock") state_get uxpatcher_gamepad_unlock "0" ;;
+      "settings get global uxpatcher_unknown_tab") state_get uxpatcher_unknown_tab "1" ;;
+      "settings put global"*) state_put "$(echo "$cmd" | awk '{print $4}')" "$(echo "$cmd" | awk '{print $5}')" ;;
+      "settings delete global"*) state_del "$(echo "$cmd" | awk '{print $4}')" ;;
       "settings get"*) echo "128" ;;
       "settings put"*) : ;;
+      "pm list packages -d")
+        echo "package:com.meta.credentialsmanager"
+        echo "package:com.oculus.updater"
+        ;;
+      "dumpsys package com.lumi.singularity")
+        echo "  Package [com.lumi.singularity] (1):"
+        echo "    versionName=1.0.8"
+        ;;
+      "dumpsys package com.singularity.magisk")
+        echo "  Package [com.singularity.magisk] (1):"
+        echo "    versionName=1db2ceaf"
+        ;;
+      "wc -l /system/etc/hosts") echo "2 /system/etc/hosts" ;;
+      "test -f /data/local/tmp/frida-server"*)
+        if [ -f "$STATE_DIR/frida_pushed" ]; then echo "yes"; else echo "no"; fi ;;
+      "pidof frida-server")
+        if [ -f "$STATE_DIR/frida_running" ]; then echo "1234"; fi ;;
+      "su -c \"test -f /data/adb/modules/hosts/system/etc/hosts"*)
+        if [ -f "$STATE_DIR/hosts_applied" ]; then echo "yes"; else echo "no"; fi ;;
+      "su -c \"grep -c 0.0.0.0 /data/adb/modules/hosts/system/etc/hosts"*)
+        if [ -f "$STATE_DIR/hosts_applied" ]; then echo "74"; else echo "0"; fi ;;
+      "su -c \"mkdir -p /data/adb/modules/hosts/system/etc"*)
+        mkdir -p "$STATE_DIR"; touch "$STATE_DIR/hosts_applied" ;;
+      "su -c \"rm -f /data/adb/modules/hosts/system/etc/hosts\"")
+        rm -f "$STATE_DIR/hosts_applied" ;;
+      "su -c \"nohup /data/local/tmp/frida-server"*)
+        mkdir -p "$STATE_DIR"; touch "$STATE_DIR/frida_running" ;;
+      "su -c \"pkill -x frida-server\"")
+        rm -f "$STATE_DIR/frida_running" ;;
+      "chmod 755 /data/local/tmp/frida-server") : ;;
       "screenrecord"*) : ;;
       "rm "*) : ;;
       "logcat"*) : ;;
@@ -120,6 +184,9 @@ case "$1" in
   push)
     # push <local> <remote>
     [ -f "$2" ] || { echo "mock: push source missing: $2" >&2; exit 1; }
+    if [ "$3" = "/data/local/tmp/frida-server" ]; then
+      mkdir -p "$STATE_DIR"; touch "$STATE_DIR/frida_pushed"
+    fi
     echo "[100%] $2"
     ;;
   pull)

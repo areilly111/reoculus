@@ -299,6 +299,34 @@ recorded here with a date and a note in both agents' READMEs.
   answer the HOME intent but are not homes (`com.oculus.systemux`
   library panel and shortcut dialog, and any dialog activity).
 
+- **2026-11-12 — Singularity downloads and rooted settings, info
+  buttons (0.2.18).** New module `singularity_settings.rs`,
+  reimplemented from what Singularity publishes and what a rooted
+  headset shows. `singularity downloads --serial X` (Singularity APK,
+  Frida server 17.17.0, the 74-domain Meta blocklist, FreeXR
+  safe-root-things as a link only, no release download exists);
+  `singularity download-frida` (raw binary from the Singularity
+  repo, exact size 53,539,200 bytes checked) and `singularity
+  download-hosts` (raw blocklist, domain count checked);
+  `singularity frida status/push/start/stop --serial X` (push to
+  /data/local/tmp, start with `su -c nohup`, stop with `pkill -x`,
+  running checked with `pidof`); `singularity hosts
+  status/apply/remove --serial X` (apply creates the Magisk
+  systemless-hosts module with the stock localhost lines kept at
+  the top, takes effect after a reboot; the old file is backed up
+  first); `singularity ota status/block/allow --serial X` (the
+  update disabler as found on a rooted headset: both OTA settings
+  point at http://127.0.0.1/; allow deletes both settings to
+  restore the stock server; the updater app itself is never
+  touched, only reported); `singularity uxp list/set --serial X`
+  (dock and UI settings: 8 clear toggles, the rest read-only);
+  `singularity restart-home --serial X` (`am force-stop
+  com.oculus.vrshell`). The Rooted section shows a Downloads card
+  and a Dock and home settings card. Pages also got small "i" info
+  buttons (a shared `InfoButton` widget) on Saved profiles, Device
+  backups, Headset snapshots, Homes, Battery and health, Mirror
+  Quality, and PC VR, each opening a plain-language note.
+
 ### Homes (added 2026-11-12)
 
 | Command | Notes |

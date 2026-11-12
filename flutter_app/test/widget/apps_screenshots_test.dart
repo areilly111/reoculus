@@ -185,6 +185,40 @@ class FakeBackend implements BackendService {
       return Future<RootStatus>.value(const RootStatus(
         rooted: true, method: 'Magisk', suPresent: true, magiskPresent: true, singularityPresent: true));
     }
+    if (name == #singularityDownloads) {
+      return Future<List<SingularityDownload>>.value(const [
+        SingularityDownload(id: 'singularity', name: 'Singularity', detail: 'Lorem ipsum dolor sit amet.', source: 'Lorem ipsum', version: '1.0.8', onHeadset: 'installed 1.0.8', downloadable: true, downloaded: true, sizeBytes: 12345678, sha256: '0123456789abcdef0123456789abcdef'),
+        SingularityDownload(id: 'frida', name: 'Frida server', detail: 'Lorem ipsum dolor sit amet.', source: 'Lorem ipsum', version: '17.17.0', onHeadset: 'not on headset', downloadable: true, downloaded: true, sizeBytes: 53539200, sha256: '0123456789abcdef0123456789abcdef'),
+        SingularityDownload(id: 'hosts', name: 'Meta domain blocklist', detail: 'Lorem ipsum dolor sit amet.', source: 'Lorem ipsum', version: '74 domains', onHeadset: 'not applied', downloadable: true, downloaded: true, sizeBytes: 2305, sha256: '0123456789abcdef0123456789abcdef'),
+        SingularityDownload(id: 'freexr', name: 'FreeXR safe-root-things', detail: 'Lorem ipsum dolor sit amet.', source: 'Lorem ipsum', version: 'no release', onHeadset: 'not checked', downloadable: false, downloaded: false, sizeBytes: 0),
+      ]);
+    }
+    if (name == #singularityDownloadFrida) {
+      return Future<Map<String, dynamic>>.value({'ok': true, 'version': '17.17.0', 'file': '/tmp/frida-server', 'size_bytes': 53539200, 'sha256': '0123456789abcdef0123456789abcdef'});
+    }
+    if (name == #singularityDownloadHosts) {
+      return Future<Map<String, dynamic>>.value({'ok': true, 'file': '/tmp/hosts', 'domains': 74, 'sha256': '0123456789abcdef0123456789abcdef'});
+    }
+    if (name == #fridaStatus || name == #fridaPush || name == #fridaStart || name == #fridaStop) {
+      return Future<FridaStatusInfo>.value(const FridaStatusInfo(downloaded: true, pushed: false, running: false, sizeBytes: 53539200));
+    }
+    if (name == #hostsStatus || name == #hostsApply || name == #hostsRemove) {
+      return Future<HostsStatusInfo>.value(const HostsStatusInfo(downloaded: true, applied: false, domains: 74, sizeBytes: 2305, systemLines: 2, moduleDomains: 0));
+    }
+    if (name == #otaStatus || name == #otaSet) {
+      return Future<OtaStatusInfo>.value(const OtaStatusInfo(blocked: true, updaterDisabled: true));
+    }
+    if (name == #uxpList) {
+      return Future<List<UxpSetting>>.value(const [
+        UxpSetting(key: 'uxpatcher_battery_percent', label: 'Battery percent in the dock', detail: 'Lorem ipsum dolor sit amet.', value: '1', isToggle: true, enabled: true),
+        UxpSetting(key: 'uxpatcher_hide_passthrough', label: 'Hide the passthrough button', detail: 'Lorem ipsum dolor sit amet.', value: '0', isToggle: true, enabled: false),
+        UxpSetting(key: 'uxpatcher_dock_order', label: 'Dock button order', detail: 'Lorem ipsum dolor sit amet.', value: 'profile,qs,notif,pt', isToggle: false, enabled: false),
+      ]);
+    }
+    if (name == #uxpSet) {
+      return Future<UxpSetting?>.value(const UxpSetting(key: 'uxpatcher_battery_percent', label: 'Battery percent in the dock', detail: 'Lorem ipsum dolor sit amet.', value: '1', isToggle: true, enabled: true));
+    }
+    if (name == #restartHome) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'The home screen was restarted.'));
     if (name == #analyzeApk) {
       return Future<ApkAnalysis?>.value(const ApkAnalysis(
         path: '/tmp/lorem.apk', file: 'lorem.apk', fileSizeBytes: 123456789,

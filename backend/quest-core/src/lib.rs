@@ -14,6 +14,7 @@ pub mod health;
 pub mod homes;
 pub mod library;
 pub mod singularity;
+pub mod singularity_settings;
 pub mod snapshot;
 pub mod update_block;
 pub mod wireless;
