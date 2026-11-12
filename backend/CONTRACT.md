@@ -327,14 +327,78 @@ recorded here with a date and a note in both agents' READMEs.
   backups, Headset snapshots, Homes, Battery and health, Mirror
   Quality, and PC VR, each opening a plain-language note.
 
+- **2026-11-12 — home apps, storage locations, controllers last
+  seen, two-cards-per-row layout (0.2.19).** New modules
+  `home_apps.rs` and `paths.rs`. `home-apps list --serial X`
+  (Lightning Launcher 10.0.1 and Quest Home Switcher 2.3.0:
+  installed version from the headset, latest version from the
+  authors' GitHub releases, update available when they differ,
+  downloaded file + SHA-256 when cached); `home-apps
+  download/install/uninstall/open --serial X --id <lightning|qhs>`
+  (download verifies the APK by aapt badging: package + version
+  must match the release, and QHS is also checked against its
+  published SHA256SUMS.txt; install passes `-g` as the QHS
+  instructions ask). The QHS homes catalogue lives inside the QHS
+  app, so browsing homes opens QHS on the headset; there is no
+  public catalogue file to read. `paths get/set/reset` (backup and
+  library share one configurable root, recordings have their own;
+  env overrides `QUEST_COMPANION_BACKUP_ROOT` /
+  `QUEST_COMPANION_RECORDINGS_ROOT`; moving a location never moves
+  existing files). `homes list` now shows only real launchers:
+  `com.oculus.vrshell` and `com.android.settings` FallbackHome are
+  excluded (the stock home is reachable with `homes open-meta` and
+  the headset Home settings picker); an empty filtered list is a
+  fine answer, not an error. New: `homes open --serial X
+  --component <pkg/Activity>` (open any home once, component
+  shape-checked), `homes open-meta --serial X` (open the stock
+  home), `homes open-settings-screen --serial X --screen
+  <wifi|bluetooth|display|storage|apps|about|home|settings>`.
+  `devices controllers` now keeps a last-seen cache
+  (`~/.cache/quest-companion/controllers-last-seen-<serial>.json`):
+  when no controller is awake it returns the last ones seen with
+  `asleep: true` and `last_seen`, so the card never reads as broken
+  just because both controllers slept. Controller battery is still
+  not readable over adb; the UI says so plainly. "Battery and
+  health" is renamed "Headset Health" and now holds the controllers
+  too. Layout: pages use a shared `CardGrid` (two cards per row on a
+  wide window, one per row on a narrow one) on Home, Devices, Device
+  and Settings, Mirror, PC VR, Help, and Setup; Files and Apps keep
+  their own layouts. The default home cannot be changed directly on
+  this firmware: `cmd package set-home-activity` and the HOME role
+  change are both refused even as root, and
+  `package-restrictions.xml` holds no HOME preferred activity to
+  edit, so the app opens homes on demand and offers the headset's
+  Home settings picker instead.
+
+### Home apps (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `home-apps list --serial X` | `{"home_apps": [{"id", "name", "package", "detail", "source", "installed", "installed_version", "latest_version", "update_available", "downloaded", "file", "sha256", "size_bytes"}]}`. Latest versions come from the authors' GitHub releases; the lookup fails soft per app. |
+| `home-apps download --id <lightning\|qhs>` | Downloads the release APK to `~/.cache/quest-companion/home-apps/<id>.apk`, verifies it by aapt badging (package + version must match the release; QHS also checked against its published SHA256SUMS.txt). Returns `{"id", "version", "file", "size_bytes", "sha256", "verified"}`. |
+| `home-apps install --serial X --id <lightning\|qhs>` | Downloads first when the cache is empty, then installs over ADB with `-g`. |
+| `home-apps uninstall --serial X --id <lightning\|qhs>` | Removes the app from the headset (no data kept). |
+| `home-apps open --serial X --id <lightning\|qhs>` | Opens the app on the headset. |
+
+### Storage locations (added 2026-11-12)
+
+| Command | Notes |
+|---|---|
+| `paths get` | `{"backup_root", "backup_root_is_default", "recordings_root", "recordings_root_is_default", "config_file"}`. Defaults: backups/library `~/.local/share/quest-companion/backups/`, recordings `~/quest-recordings/`. |
+| `paths set [--backup-root <path>] [--recordings-root <path>]` | Writes `~/.config/quest-companion/paths.json`. Paths must be absolute and, when they exist, must be directories. The new folder starts empty; existing files are not moved. |
+| `paths reset` | Deletes the config file; both locations go back to their defaults. |
+
 ### Homes (added 2026-11-12)
 
 | Command | Notes |
 |---|---|
-| `homes list --serial X` | `{"homes": [{"component": "pkg/Activity", "package", "label", "is_current"}]}` (current first). Labels come from the installed-app list. |
+| `homes list --serial X` | `{"homes": [{"component": "pkg/Activity", "package", "label", "is_current"}]}` (current first). Labels come from the installed-app list. Only real launchers are listed: the stock home (`com.oculus.vrshell`) and the Settings fallback home are excluded, and an empty list is a fine answer. |
 | `homes current --serial X` | `{"current": "pkg/Activity"}` or `{"current": null}` when the headset has no home picked yet. |
 | `homes set --serial X --component <pkg/Activity>` | `cmd package set-home-activity`, then verifies with `resolve-activity`. Fails with a clear error when the build refuses it (the UI then offers the Home settings screen). |
 | `homes open-settings --serial X` | Opens `android.settings.HOME_SETTINGS` on the headset (the system home picker). |
+| `homes open --serial X --component <pkg/Activity>` | Opens any home once, without changing the default (`am start -n <component>`). |
+| `homes open-meta --serial X` | Opens the stock Meta home once (`com.oculus.vrshell/.HomeActivity`). |
+| `homes open-settings-screen --serial X --screen <wifi\|bluetooth\|display\|storage\|apps\|about\|home\|settings>` | Opens a settings screen on the headset. |
 
 ### Snapshots (added 2026-11-12)
 

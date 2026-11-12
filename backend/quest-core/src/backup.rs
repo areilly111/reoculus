@@ -30,21 +30,12 @@ use sha2::Digest;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-/// Default backup root: `$XDG_DATA_HOME/quest-companion/backups`,
+/// Backup root (backups and the APK library share this folder).
+/// The user can move it in the app (Storage locations); see
+/// `paths.rs`. Defaults to `$XDG_DATA_HOME/quest-companion/backups`,
 /// else `~/.local/share/quest-companion/backups`.
 pub fn backup_root() -> Result<PathBuf> {
-    if let Ok(x) = std::env::var("XDG_DATA_HOME") {
-        if !x.is_empty() {
-            return Ok(PathBuf::from(x).join("quest-companion").join("backups"));
-        }
-    }
-    let home = std::env::var("HOME")
-        .map_err(|_| Error("HOME is not set; cannot locate backup dir".into()))?;
-    Ok(PathBuf::from(home)
-        .join(".local")
-        .join("share")
-        .join("quest-companion")
-        .join("backups"))
+    crate::paths::backup_root()
 }
 
 fn sanitize(s: &str) -> String {

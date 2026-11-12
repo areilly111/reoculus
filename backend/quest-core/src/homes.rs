@@ -1,12 +1,22 @@
-//! Home manager: list the home / environment apps on the headset,
-//! see which one is active, and switch the active home.
+//! Home manager: list the launchers on the headset, see which home
+//! is active, and open homes, launchers and settings screens.
 //!
 //! Homes are ordinary APKs that handle ACTION_MAIN + CATEGORY_HOME.
 //! The list comes from `pm query-activities`, the same query the
-//! Android home picker uses. Switching runs `cmd package
-//! set-home-activity` (a shell-user command since Android 10); on
-//! builds that refuse it, the UI falls back to opening the
-//! headset's Home settings screen so the user picks there.
+//! Android home picker uses, filtered to real launchers only (the
+//! stock Meta home and the Settings fallback home are not
+//! launchers, so they are not listed; the stock home is still
+//! reachable through "Open Meta Home").
+//!
+//! Switching the DEFAULT home: this firmware refuses both
+//! `cmd package set-home-activity` and the HOME role change, even
+//! as root (verified live 2026-11-12), and the default is not
+//! stored as an editable preferred activity, so no app can change
+//! it directly. `set_home` still tries the command, and on refusal
+//! the UI opens the headset's Home settings picker, which is the
+//! one route that works. `open_home` launches any home once
+//! without changing the default, which is how the PC app switches
+//! what the user is looking at.
 //!
 //! This never copies Quest Home Switcher's code; it only uses the
 //! public adb commands any home manager would use.
@@ -91,19 +101,29 @@ fn package_of(component: &str) -> String {
         .to_string()
 }
 
-/// True when a component from `pm query-activities` is a home a user
-/// can actually pick. The query also lists system panels that handle
-/// the HOME intent but are not homes: the Quest system UI library
-/// panel and its shortcut dialog (`com.oculus.systemux`), and any
-/// dialog activity. Those would fail to set, so they never reach
-/// the list. Verified live on a Quest 2: the real homes are
-/// `com.oculus.vrshell`, `com.threethan.launcher` and
-/// `com.android.settings/.FallbackHome`.
+/// True when a component from `pm query-activities` is a launcher a
+/// user can actually pick. The query also lists things that are not
+/// launchers: the Quest system UI library panel and its shortcut
+/// dialog (`com.oculus.systemux`), any dialog activity, Meta's own
+/// home (`com.oculus.vrshell`, the stock launcher) and the Settings
+/// fallback home (`com.android.settings/.FallbackHome`). Those are
+/// not launchers to switch between, so they never reach the list.
+/// The stock home is still reachable: the list's "Open Meta Home"
+/// action launches it once, and the Home settings picker (where the
+/// stock home lives) is one tap away. Verified live on a Quest 2:
+/// the real launchers are `com.threethan.launcher` (Lightning
+/// Launcher) and any other third-party home the user installs.
 pub fn is_home_component(component: &str) -> bool {
     let (pkg, activity) = component
         .split_once('/')
         .unwrap_or((component, ""));
     if pkg == "com.oculus.systemux" {
+        return false;
+    }
+    if pkg == "com.oculus.vrshell" {
+        return false;
+    }
+    if pkg == "com.android.settings" {
         return false;
     }
     if activity.contains("Dialog") {
@@ -118,14 +138,21 @@ pub fn list_homes(t: &dyn AdbTransport, serial: &str) -> Result<Vec<HomeEntry>> 
         &target,
         "pm query-activities --components -a android.intent.action.MAIN -c android.intent.category.HOME",
     )?;
-    let components: Vec<String> = parse_query_activities(&out.stdout)
-        .into_iter()
-        .filter(|c| is_home_component(c))
-        .collect();
-    if components.is_empty() {
+    let raw = parse_query_activities(&out.stdout);
+    if raw.is_empty() {
         return Err(Error(
             "no home apps answered the query (is this a Quest? the headset may need a restart)".into(),
         ));
+    }
+    let components: Vec<String> = raw
+        .into_iter()
+        .filter(|c| is_home_component(c))
+        .collect();
+    // No third-party launcher installed is a fine answer: an empty
+    // list, not an error. The stock home (vrshell) is deliberately
+    // not in the list.
+    if components.is_empty() {
+        return Ok(Vec::new());
     }
     let current = current_home(t, serial).ok().flatten();
     // Labels from the installed-app list (one call, already fast).
@@ -208,6 +235,63 @@ pub fn open_home_settings(t: &dyn AdbTransport, serial: &str) -> Result<String> 
     Ok("Home settings are open on the headset. Put it on and pick a home there.".into())
 }
 
+/// Open a home once, without changing the default. The headset
+/// shows that home until the user presses the home button, which
+/// returns to whatever the default is. This is how the PC app
+/// switches what the user is looking at, since this firmware will
+/// not let any app change the default (both `set-home-activity`
+/// and the HOME role are refused, verified live).
+pub fn open_home(t: &dyn AdbTransport, serial: &str, component: &str) -> Result<String> {
+    if !component.contains('/') || component.contains(' ') || component.contains(';') || component.contains('$') {
+        return Err(Error(
+            "that does not look like a home component (want package/Activity)".into(),
+        ));
+    }
+    let target = Target::serial(serial);
+    let out = t.shell(&target, &format!("am start -n {component}"))?;
+    let text = format!("{}{}", out.stdout, out.stderr);
+    if text.contains("Error") && !text.contains("Starting:") {
+        return Err(Error(format!("could not open {component}: {}", text.trim())));
+    }
+    Ok(format!("opened {component} on the headset."))
+}
+
+/// Open Meta's own home once (the stock launcher). Same idea as
+/// `open_home`, for the home that is deliberately not in the list.
+pub fn open_meta_home(t: &dyn AdbTransport, serial: &str) -> Result<String> {
+    open_home(t, serial, "com.oculus.vrshell/.HomeActivity")
+}
+
+/// Open a settings screen on the headset. `screen` is one of the
+/// known names below; anything else is refused, so no arbitrary
+/// intent can be smuggled in.
+pub fn open_settings_screen(t: &dyn AdbTransport, serial: &str, screen: &str) -> Result<String> {
+    let action = match screen {
+        "wifi" => "android.settings.WIFI_SETTINGS",
+        "bluetooth" => "android.settings.BLUETOOTH_SETTINGS",
+        "display" => "android.settings.DISPLAY_SETTINGS",
+        "storage" => "android.settings.INTERNAL_STORAGE_SETTINGS",
+        "apps" => "android.settings.APPLICATION_SETTINGS",
+        "about" => "android.settings.DEVICE_INFO_SETTINGS",
+        "home" => "android.settings.HOME_SETTINGS",
+        "settings" => "android.settings.SETTINGS",
+        _ => {
+            return Err(Error(format!(
+                "unknown settings screen: {screen} (wifi, bluetooth, display, storage, apps, about, home, settings)"
+            )))
+        }
+    };
+    let target = Target::serial(serial);
+    let out = t.shell(&target, &format!("am start -a {action}"))?;
+    if out.code != 0 {
+        return Err(Error(format!(
+            "could not open {screen} settings on the headset: {}",
+            out.stderr.trim()
+        )));
+    }
+    Ok(format!("{screen} settings are open on the headset."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +329,18 @@ mod tests {
     fn package_of_component() {
         assert_eq!(package_of("com.oculus.home/.HomeActivity"), "com.oculus.home");
         assert_eq!(package_of("com.foo/com.foo.Bar"), "com.foo");
+    }
+
+    #[test]
+    fn filter_keeps_only_real_launchers() {
+        // Real launchers stay.
+        assert!(is_home_component("com.threethan.launcher/com.threethan.LightningLauncher"));
+        assert!(is_home_component("com.reoculus.home/.MainActivity"));
+        // The stock home, the Settings fallback home, the system UI
+        // panels and any dialog activity are not launchers.
+        assert!(!is_home_component("com.oculus.vrshell/.HomeActivity"));
+        assert!(!is_home_component("com.android.settings/.FallbackHome"));
+        assert!(!is_home_component("com.oculus.systemux/.LibraryActivity"));
+        assert!(!is_home_component("com.oculus.systemux/.ShortcutCreationDialogActivity"));
     }
 }

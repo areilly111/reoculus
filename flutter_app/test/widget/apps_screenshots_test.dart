@@ -142,7 +142,10 @@ class FakeBackend implements BackendService {
     if (name == #controllers) {
       return Future<ControllersInfo>.value(const ControllersInfo(
         names: ['Lorem Controller', 'Ipsum Controller'],
-        note: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.'));
+        note: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+        asleep: true,
+        lastSeen: '2026-11-12 15:40:00',
+      ));
     }
     if (name == #updateBlockStatus) {
       return Future<UpdateBlockStatus?>.value(const UpdateBlockStatus(
@@ -153,6 +156,46 @@ class FakeBackend implements BackendService {
     if (name == #homesCurrent) return Future<String?>.value('com.lorem.ipsum/.HomeActivity');
     if (name == #homesSet) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home switched.'));
     if (name == #homesOpenSettings) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home settings are open on the headset.'));
+    if (name == #homesOpen) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Opened on the headset.'));
+    if (name == #homesOpenMeta) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Meta Home is open on the headset.'));
+    if (name == #homesOpenSettingsScreen) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Settings screen is open on the headset.'));
+    if (name == #homeAppsList) {
+      return Future<List<HomeAppStatus>>.value(const [
+        HomeAppStatus(
+          id: 'lightning', name: 'Lightning Launcher', package: 'com.lorem.launcher',
+          detail: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+          source: 'GitHub releases (lorem/ipsum)', installed: true, updateAvailable: true,
+          downloaded: true, installedVersion: '10.0.0', latestVersion: '10.0.1',
+          file: '/tmp/LightningLauncher.apk', sha256: '0123456789abcdef0123456789abcdef', sizeBytes: 2814577,
+        ),
+        HomeAppStatus(
+          id: 'qhs', name: 'Quest Home Switcher', package: 'app.lorem.qhs',
+          detail: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+          source: 'GitHub releases (lorem/ipsum)', installed: false, updateAvailable: false,
+          downloaded: false, installedVersion: null, latestVersion: '2.3.0',
+          file: null, sha256: null, sizeBytes: 0,
+        ),
+      ]);
+    }
+    if (name == #homeAppDownload) {
+      return Future<Map<String, dynamic>>.value({
+        'ok': true, 'version': '10.0.1', 'file': '/tmp/LightningLauncher.apk',
+        'size_bytes': 2814577, 'sha256': '0123456789abcdef0123456789abcdef',
+        'verified': 'Lorem ipsum dolor sit amet.',
+      });
+    }
+    if (name == #homeAppInstall) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Installed on the headset.'));
+    if (name == #homeAppUninstall) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Removed from the headset.'));
+    if (name == #homeAppOpen) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Opened on the headset.'));
+    if (name == #pathsGet || name == #pathsSet || name == #pathsReset) {
+      return Future<PathsInfo?>.value(const PathsInfo(
+        backupRoot: '/home/lorem/quest-companion/backups',
+        recordingsRoot: '/home/lorem/quest-recordings',
+        configFile: '/home/lorem/.config/quest-companion/paths.json',
+        backupRootIsDefault: true,
+        recordingsRootIsDefault: true,
+      ));
+    }
     if (name == #snapshotList) return Future<List<SnapshotEntry>>.value(_snapshots);
     if (name == #snapshotCreate) return Future<Map<String, dynamic>?>.value({'ok': true, 'name': 'Lorem ipsum'});
     if (name == #snapshotRestore) {

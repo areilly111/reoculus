@@ -7,11 +7,10 @@ use crate::error::{Error, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-/// Gallery root: `~/quest-recordings/`.
+/// Gallery root: `~/quest-recordings/` by default. The user can
+/// move it in the app (Storage locations); see `paths.rs`.
 pub fn gallery_root() -> Result<PathBuf> {
-    let home = std::env::var("HOME")
-        .map_err(|_| Error("HOME is not set; cannot locate gallery dir".into()))?;
-    Ok(PathBuf::from(home).join("quest-recordings"))
+    crate::paths::recordings_root()
 }
 
 #[derive(Debug, Clone, Serialize)]

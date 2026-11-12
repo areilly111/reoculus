@@ -242,29 +242,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ]),
             ),
           ),
-          // First-run PC VR prompt: first headset connection, the
-          // setup check has finished and found no WiVRn app on it,
-          // user has not said no. Install sets up the server
-          // (bundled in the app), the headset app, and the USB
-          // link, so afterwards it is just Start + tap.
-          if (dev != null && s.wivrnSetupKnown && s.wivrnClientVersion == null && !s.wivrnDeclined)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.view_in_ar),
-                title: const Text('Set up PC VR (WiVRn)?'),
-                subtitle: const Text('Installs the WiVRn app on the headset and sets up the USB and Wi-Fi links, so afterwards you just press Start and tap this computer in the headset.'),
-                trailing: Wrap(spacing: 8, children: [
-                  TextButton(onPressed: () => s.declineWivrn(), child: const Text('Not now')),
-                  FilledButton(
-                    onPressed: () async {
-                      final msg = await s.runWivrnSetup();
-                      if (mounted) showResult(context, msg.startsWith('WiVRn is ready'), msg);
-                    },
-                    child: const Text('Install'),
-                  ),
-                ]),
-              ),
-            ),
           const SectionTitle('Quick actions', subtitle: 'The things you will use most.'),
           Wrap(spacing: 12, runSpacing: 12, children: [
             _QuickAction(icon: Icons.cast, label: 'Mirror screen', onTap: () => widget.goTo(5)),
@@ -279,12 +256,40 @@ class _HomeScreenState extends State<HomeScreen> {
             _QuickAction(icon: Icons.backup, label: 'Back up headset', onTap: () => widget.goTo(1)),
             _QuickAction(icon: Icons.refresh, label: 'Refresh', onTap: () => s.refreshDevices()),
           ]),
-          const SectionTitle('Recent activity'),
-          Card(
-            child: s.activity.isEmpty
-                ? const ListTile(title: Text('Nothing yet. Install an app or take a screenshot and it will show up here.'))
-                : Column(children: s.activity.take(8).map((a) => ListTile(leading: const Icon(Icons.check_circle_outline), title: Text(a))).toList()),
-          ),
+          const SizedBox(height: 16),
+          CardGrid(cards: [
+            if (dev != null && s.wivrnSetupKnown && s.wivrnClientVersion == null && !s.wivrnDeclined)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.view_in_ar),
+                  title: const Text('Set up PC VR (WiVRn)?'),
+                  subtitle: const Text('Installs the WiVRn app on the headset and sets up the USB and Wi-Fi links, so afterwards you just press Start and tap this computer in the headset.'),
+                  trailing: Wrap(spacing: 8, children: [
+                    TextButton(onPressed: () => s.declineWivrn(), child: const Text('Not now')),
+                    FilledButton(
+                      onPressed: () async {
+                        final msg = await s.runWivrnSetup();
+                        if (mounted) showResult(context, msg.startsWith('WiVRn is ready'), msg);
+                      },
+                      child: const Text('Install'),
+                    ),
+                  ]),
+                ),
+              ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Recent activity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  if (s.activity.isEmpty)
+                    const Text('Nothing yet. Install an app or take a screenshot and it will show up here.')
+                  else
+                    ...s.activity.take(8).map((a) => ListTile(leading: const Icon(Icons.check_circle_outline), title: Text(a))),
+                ]),
+              ),
+            ),
+          ]),
           const SizedBox(height: 16),
           const Text('No account. No ads. Nothing is uploaded anywhere. Everything here runs on this computer.', style: TextStyle(fontSize: 13)),
         ]),
@@ -399,7 +404,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 body: 'Nothing here is sample data. Plug the headset in with USB, or connect it over Wi-Fi, then tap Check again.',
               )
             else
-              ...s.devices.map((d) {
+              CardGrid(cards: s.devices.map((d) {
                 final selected = s.selectedDevice?.serial == d.serial;
                 final info = _infos[d.serial];
                 final profile = s.profileFor(d.serial);
@@ -427,7 +432,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     onTap: () => s.selectDevice(d),
                   ),
                 );
-              }),
+              }).toList()),
             if (s.devices.any((d) => d.state == 'unauthorized'))
               Card(
                 color: Colors.orange.shade100,

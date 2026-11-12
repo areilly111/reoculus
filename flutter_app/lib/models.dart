@@ -351,10 +351,16 @@ class RootStatus {
 class ControllersInfo {
   final List<String> names;
   final String note;
-  const ControllersInfo({required this.names, required this.note});
+  /// True when the names are the last ones seen, not ones awake now.
+  final bool asleep;
+  /// When they were last seen awake, or null when never seen.
+  final String? lastSeen;
+  const ControllersInfo({required this.names, required this.note, this.asleep = false, this.lastSeen});
   factory ControllersInfo.fromJson(Map<String, dynamic> j) => ControllersInfo(
         names: ((j['controllers'] as List?) ?? []).map((e) => ((e as Map)['name'] ?? '').toString()).toList(),
         note: (j['note'] ?? '').toString(),
+        asleep: j['asleep'] == true,
+        lastSeen: (j['last_seen'] as String?)?.isEmpty == true ? null : j['last_seen'] as String?,
       );
 }
 
@@ -693,5 +699,41 @@ class UxpSetting {
         value: j['value']?.toString(),
         isToggle: j['is_toggle'] == true,
         enabled: j['enabled'] == true,
+      );
+}
+
+class HomeAppStatus {
+  final String id, name, package, detail, source;
+  final bool installed, updateAvailable, downloaded;
+  final String? installedVersion, latestVersion, file, sha256;
+  final int sizeBytes;
+  const HomeAppStatus({required this.id, required this.name, required this.package, required this.detail, required this.source, required this.installed, required this.updateAvailable, required this.downloaded, this.installedVersion, this.latestVersion, this.file, this.sha256, required this.sizeBytes});
+  factory HomeAppStatus.fromJson(Map<String, dynamic> j) => HomeAppStatus(
+        id: (j['id'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        package: (j['package'] ?? '').toString(),
+        detail: (j['detail'] ?? '').toString(),
+        source: (j['source'] ?? '').toString(),
+        installed: j['installed'] == true,
+        updateAvailable: j['update_available'] == true,
+        downloaded: j['downloaded'] == true,
+        installedVersion: j['installed_version']?.toString(),
+        latestVersion: j['latest_version']?.toString(),
+        file: j['file']?.toString(),
+        sha256: j['sha256']?.toString(),
+        sizeBytes: _optInt(j['size_bytes']) ?? 0,
+      );
+}
+
+class PathsInfo {
+  final String backupRoot, recordingsRoot, configFile;
+  final bool backupRootIsDefault, recordingsRootIsDefault;
+  const PathsInfo({required this.backupRoot, required this.recordingsRoot, required this.configFile, required this.backupRootIsDefault, required this.recordingsRootIsDefault});
+  factory PathsInfo.fromJson(Map<String, dynamic> j) => PathsInfo(
+        backupRoot: (j['backup_root'] ?? '').toString(),
+        recordingsRoot: (j['recordings_root'] ?? '').toString(),
+        configFile: (j['config_file'] ?? '').toString(),
+        backupRootIsDefault: j['backup_root_is_default'] == true,
+        recordingsRootIsDefault: j['recordings_root_is_default'] == true,
       );
 }

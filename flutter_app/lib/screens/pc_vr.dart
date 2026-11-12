@@ -128,82 +128,102 @@ class _PcVrScreenState extends State<PcVrScreen> {
             const Text('Install that in a terminal, then tap Refresh. The KDE runtime is already on this computer, so it is a small download.', style: TextStyle(fontSize: 13)),
           ],
           const SizedBox(height: 16),
-          const SectionTitleWithInfo('Server', infoTitle: 'Server', infoBody: 'The encoder turns the game picture into video to send to the headset. NVENC uses the NVIDIA card and is the best choice on this PC. The codec is the video format: H.265 is smaller and looks better, H.264 is the fallback. The Quest 2 cannot decode AV1. Bitrate and refresh rate are set in the WiVRn app on the headset, not here. Start at 72 Hz.'),
-          Row(children: [
-            DropdownButton<String>(
-              value: _encoder,
-              items: const [
-                DropdownMenuItem(value: 'nvenc', child: Text('NVENC (NVIDIA)')),
-                DropdownMenuItem(value: 'vulkan', child: Text('Vulkan video')),
-                DropdownMenuItem(value: 'vaapi', child: Text('VAAPI')),
-                DropdownMenuItem(value: 'x264', child: Text('x264 (CPU)')),
-              ],
-              onChanged: (v) => setState(() => _encoder = v ?? 'nvenc'),
+          CardGrid(cards: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Expanded(child: Text('Server', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                    InfoButton('Server', 'The encoder turns the game picture into video to send to the headset. NVENC uses the NVIDIA card and is the best choice on this PC. The codec is the video format: H.265 is smaller and looks better, H.264 is the fallback. The Quest 2 cannot decode AV1. Bitrate and refresh rate are set in the WiVRn app on the headset, not here. Start at 72 Hz.'),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    DropdownButton<String>(
+                      value: _encoder,
+                      items: const [
+                        DropdownMenuItem(value: 'nvenc', child: Text('NVENC (NVIDIA)')),
+                        DropdownMenuItem(value: 'vulkan', child: Text('Vulkan video')),
+                        DropdownMenuItem(value: 'vaapi', child: Text('VAAPI')),
+                        DropdownMenuItem(value: 'x264', child: Text('x264 (CPU)')),
+                      ],
+                      onChanged: (v) => setState(() => _encoder = v ?? 'nvenc'),
+                    ),
+                    const SizedBox(width: 12),
+                    DropdownButton<String>(
+                      value: _codec,
+                      items: const [
+                        DropdownMenuItem(value: 'h265', child: Text('H.265')),
+                        DropdownMenuItem(value: 'h264', child: Text('H.264')),
+                      ],
+                      onChanged: (v) => setState(() => _codec = v ?? 'h265'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton(
+                      onPressed: _busy || !installed
+                          ? null
+                          : () => _act(() async {
+                                final r = await widget.state.backend.wivrnConfig(_encoder, _codec);
+                                if (mounted) showResult(context, r.ok, r.message);
+                              }),
+                      child: const Text('Save encoder'),
+                    ),
+                  ]),
+                  const Text('H.265 first, H.264 fallback. The Quest 2 cannot decode AV1 and this PC cannot encode it. Bitrate and refresh rate are set in the WiVRn app on the headset, not here. Start at 72 Hz.', style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    FilledButton.icon(
+                      onPressed: _busy || !installed || running || widget.state.wivrnDeclined || (widget.state.wivrnSetupKnown && widget.state.wivrnClientVersion == null && _clientVersion == null)
+                          ? null
+                          : () => _act(() async {
+                                final r = await widget.state.backend.wivrnStart();
+                                if (mounted) showResult(context, r.ok, r.message);
+                              }),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Start WiVRn server'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _busy || !running
+                          ? null
+                          : () => _act(() async {
+                                final r = await widget.state.backend.wivrnStop();
+                                if (mounted) showResult(context, r.ok, r.message);
+                              }),
+                      icon: const Icon(Icons.stop),
+                      label: const Text('Stop server'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _act(() async {}),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Refresh'),
+                    ),
+                  ]),
+                ]),
+              ),
             ),
-            const SizedBox(width: 12),
-            DropdownButton<String>(
-              value: _codec,
-              items: const [
-                DropdownMenuItem(value: 'h265', child: Text('H.265')),
-                DropdownMenuItem(value: 'h264', child: Text('H.264')),
-              ],
-              onChanged: (v) => setState(() => _codec = v ?? 'h265'),
-            ),
-            const SizedBox(width: 12),
-            OutlinedButton(
-              onPressed: _busy || !installed
-                  ? null
-                  : () => _act(() async {
-                        final r = await widget.state.backend.wivrnConfig(_encoder, _codec);
-                        if (mounted) showResult(context, r.ok, r.message);
-                      }),
-              child: const Text('Save encoder'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Headset', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  Text(
+                    _clientVersion == null
+                        ? 'No WiVRn app found on the headset yet. Install WiVRn 26.9 from the Horizon Store, or ask the app to install the matching APK.'
+                        : 'WiVRn app on headset: $_clientVersion. Server: ${serverVersion.isEmpty ? 'not installed' : serverVersion}. ${match ? 'Versions match, ready to connect.' : 'VERSIONS DO NOT MATCH. Update one side to $serverVersion before connecting.'}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'To connect: start the server, open WiVRn on the headset, tap this computer in the server list, and enter the pairing PIN shown in the server log the first time. For USB, plug the cable in and turn Wi-Fi off on the headset.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ]),
+              ),
             ),
           ]),
-          const Text('H.265 first, H.264 fallback. The Quest 2 cannot decode AV1 and this PC cannot encode it. Bitrate and refresh rate are set in the WiVRn app on the headset, not here. Start at 72 Hz.', style: TextStyle(fontSize: 13)),
-          const SizedBox(height: 12),
-          Row(children: [
-            FilledButton.icon(
-              onPressed: _busy || !installed || running || widget.state.wivrnDeclined || (widget.state.wivrnSetupKnown && widget.state.wivrnClientVersion == null && _clientVersion == null)
-                  ? null
-                  : () => _act(() async {
-                        final r = await widget.state.backend.wivrnStart();
-                        if (mounted) showResult(context, r.ok, r.message);
-                      }),
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start WiVRn server'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _busy || !running
-                  ? null
-                  : () => _act(() async {
-                        final r = await widget.state.backend.wivrnStop();
-                        if (mounted) showResult(context, r.ok, r.message);
-                      }),
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop server'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _busy ? null : () => _act(() async {}),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Refresh'),
-            ),
-          ]),
-          const SizedBox(height: 16),
-          const SectionTitle('Headset'),
-          Text(
-            _clientVersion == null
-                ? 'No WiVRn app found on the headset yet. Install WiVRn 26.9 from the Horizon Store, or ask the app to install the matching APK.'
-                : 'WiVRn app on headset: $_clientVersion. Server: ${serverVersion.isEmpty ? 'not installed' : serverVersion}. ${match ? 'Versions match, ready to connect.' : 'VERSIONS DO NOT MATCH. Update one side to $serverVersion before connecting.'}',
-            style: const TextStyle(fontSize: 13),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'To connect: start the server, open WiVRn on the headset, tap this computer in the server list, and enter the pairing PIN shown in the server log the first time. For USB, plug the cable in and turn Wi-Fi off on the headset.',
-            style: TextStyle(fontSize: 13),
-          ),
           const SizedBox(height: 16),
           const SectionTitle('Server log'),
           if ((s?['log_tail'] as List?)?.isEmpty ?? true)

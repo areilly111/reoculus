@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, device_backup, devices, files, gallery, health, homes, library, media, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
+use quest_core::{apk_analyzer, apps, backup, device_backup, devices, files, gallery, health, home_apps, homes, library, media, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -48,6 +48,10 @@ enum Commands {
     Wivrn(WivrnArgs),
     /// Home / environment apps: list, see the active one, switch.
     Homes(HomesArgs),
+    /// Home apps: Lightning Launcher + Quest Home Switcher.
+    HomeApps(HomeAppsArgs),
+    /// Storage locations on this computer (backups, recordings).
+    Paths(PathsArgs),
     /// Singularity root wizard: preflight, download, install, verify.
     Singularity(SingularityArgs),
     /// Named whole-headset snapshots (device backup + profile).
@@ -139,6 +143,87 @@ enum HomesCmd {
         #[arg(long)]
         serial: String,
     },
+    /// Open a home once, without changing the default (package/Activity).
+    Open {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        component: String,
+    },
+    /// Open Meta's own home once (the stock launcher).
+    OpenMeta {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Open a settings screen on the headset (wifi, bluetooth,
+    /// display, storage, apps, about, home, settings).
+    OpenSettingsScreen {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        screen: String,
+    },
+}
+
+#[derive(Args)]
+struct HomeAppsArgs {
+    #[command(subcommand)]
+    cmd: HomeAppsCmd,
+}
+#[derive(Subcommand)]
+enum HomeAppsCmd {
+    /// Scan the headset for Lightning Launcher and Quest Home
+    /// Switcher: installed, version, update available, downloaded.
+    List {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Download the latest release APK (lightning or qhs).
+    Download {
+        #[arg(long)]
+        id: String,
+    },
+    /// Install one home app (lightning or qhs), downloading first.
+    Install {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        id: String,
+    },
+    /// Uninstall one home app (lightning or qhs).
+    Uninstall {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        id: String,
+    },
+    /// Open one home app on the headset (lightning or qhs).
+    Open {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        id: String,
+    },
+}
+
+#[derive(Args)]
+struct PathsArgs {
+    #[command(subcommand)]
+    cmd: PathsCmd,
+}
+#[derive(Subcommand)]
+enum PathsCmd {
+    /// Show the backup/library and recordings folders in use.
+    Get,
+    /// Move the backup/library folder and/or the recordings folder.
+    Set {
+        #[arg(long)]
+        backup_root: Option<String>,
+        #[arg(long)]
+        recordings_root: Option<String>,
+    },
+    /// Go back to the default folders.
+    Reset,
 }
 
 #[derive(Args)]
@@ -917,6 +1002,47 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 let m = homes::open_home_settings(t.as_ref(), serial)?;
                 Ok(json!({ "message": m }))
             }
+            HomesCmd::Open { serial, component } => {
+                let m = homes::open_home(t.as_ref(), serial, component)?;
+                Ok(json!({ "message": m, "component": component }))
+            }
+            HomesCmd::OpenMeta { serial } => {
+                let m = homes::open_meta_home(t.as_ref(), serial)?;
+                Ok(json!({ "message": m }))
+            }
+            HomesCmd::OpenSettingsScreen { serial, screen } => {
+                let m = homes::open_settings_screen(t.as_ref(), serial, screen)?;
+                Ok(json!({ "message": m, "screen": screen }))
+            }
+        },
+        Commands::HomeApps(a) => match &a.cmd {
+            HomeAppsCmd::List { serial } => {
+                let list = home_apps::list(t.as_ref(), serial)?;
+                Ok(json!({ "home_apps": list }))
+            }
+            HomeAppsCmd::Download { id } => {
+                let d = home_apps::download(id)?;
+                Ok(serde_json::to_value(d)?)
+            }
+            HomeAppsCmd::Install { serial, id } => {
+                let m = home_apps::install(t.as_ref(), serial, id)?;
+                Ok(json!({ "message": m, "id": id }))
+            }
+            HomeAppsCmd::Uninstall { serial, id } => {
+                let m = home_apps::uninstall(t.as_ref(), serial, id)?;
+                Ok(json!({ "message": m, "id": id }))
+            }
+            HomeAppsCmd::Open { serial, id } => {
+                let m = home_apps::open(t.as_ref(), serial, id)?;
+                Ok(json!({ "message": m, "id": id }))
+            }
+        },
+        Commands::Paths(a) => match &a.cmd {
+            PathsCmd::Get => Ok(serde_json::to_value(paths::get_paths()?)?),
+            PathsCmd::Set { backup_root, recordings_root } => {
+                Ok(serde_json::to_value(paths::set_paths(backup_root.clone(), recordings_root.clone())?)?)
+            }
+            PathsCmd::Reset => Ok(serde_json::to_value(paths::reset_paths()?)?),
         },
         Commands::Singularity(a) => match &a.cmd {
             SingularityCmd::Preflight { serial } => {

@@ -99,6 +99,7 @@ case "$1" in
         ;;
       "cmd package set-home-activity"*) : ;;
       "am start -a android.settings.HOME_SETTINGS") echo "Starting: Intent { act=android.settings.HOME_SETTINGS }" ;;
+      "am start -a android.settings."*) echo "Starting: Intent { act=$cmd }" ;;
       "cat /proc/uptime") echo "123456.78 98765.43" ;;
       "df /data")
         echo "Filesystem      1K-blocks     Used Available Use% Mounted on"

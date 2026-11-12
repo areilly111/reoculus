@@ -298,7 +298,7 @@ fn settings_delete(t: &dyn AdbTransport, serial: &str, key: &str) -> Result<()> 
     }
 }
 
-fn installed_version(t: &dyn AdbTransport, serial: &str, pkg: &str) -> Option<String> {
+pub(crate) fn installed_version(t: &dyn AdbTransport, serial: &str, pkg: &str) -> Option<String> {
     let out = t
         .shell(&Target::serial(serial), &format!("dumpsys package {pkg}"))
         .ok()?;

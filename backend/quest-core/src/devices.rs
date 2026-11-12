@@ -203,6 +203,13 @@ pub struct ControllersInfo {
     pub count: usize,
     /// Plain-language note about what is and is not readable.
     pub note: String,
+    /// True when the listed controllers are not awake right now:
+    /// they are the last ones seen, not the ones awake. The card
+    /// says so, so a sleeping controller never looks missing.
+    pub asleep: bool,
+    /// When the listed controllers were last seen awake, plain
+    /// "YYYY-MM-DD HH:MM:SS" (UTC), or null when never seen.
+    pub last_seen: Option<String>,
 }
 
 pub const CONTROLLER_NOTE: &str = "Touch controllers show up in getevent as 'Device 0x...' entries (one per controller); left and right cannot be told apart from adb, and battery level and firmware version are not readable offline via adb. Check battery in the headset (quick settings shows the controller batteries).";
@@ -264,9 +271,102 @@ pub fn controllers(t: &dyn AdbTransport, serial: &str) -> Result<ControllersInfo
     } else {
         names
     };
-    let controllers = names.into_iter().map(|name| ControllerInfo { name }).collect::<Vec<_>>();
-    let count = controllers.len();
-    Ok(ControllersInfo { controllers, count, note: CONTROLLER_NOTE.to_string() })
+    if !names.is_empty() {
+        // Awake right now: remember them, so the next check (when
+        // they have slept, seconds later) can still show them.
+        save_last_seen(serial, &names);
+        let controllers = names.into_iter().map(|name| ControllerInfo { name }).collect::<Vec<_>>();
+        let count = controllers.len();
+        return Ok(ControllersInfo {
+            controllers,
+            count,
+            note: CONTROLLER_NOTE.to_string(),
+            asleep: false,
+            last_seen: None,
+        });
+    }
+    // Nothing awake. Show the last ones seen, marked asleep, so the
+    // card never looks broken just because both controllers slept.
+    if let Some((seen_names, seen_at)) = read_last_seen(serial) {
+        let controllers = seen_names
+            .into_iter()
+            .map(|name| ControllerInfo { name })
+            .collect::<Vec<_>>();
+        let count = controllers.len();
+        return Ok(ControllersInfo {
+            controllers,
+            count,
+            note: CONTROLLER_NOTE.to_string(),
+            asleep: true,
+            last_seen: Some(crate::backup::format_unix_time(seen_at)),
+        });
+    }
+    Ok(ControllersInfo {
+        controllers: Vec::new(),
+        count: 0,
+        note: CONTROLLER_NOTE.to_string(),
+        asleep: false,
+        last_seen: None,
+    })
+}
+
+/// Last-seen controllers, kept on this computer (never on the
+/// headset) at `~/.cache/quest-companion/controllers-last-seen-<serial>.json`.
+fn last_seen_path(serial: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    let safe: String = serial
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    Some(
+        std::path::PathBuf::from(home)
+            .join(".cache")
+            .join("quest-companion")
+            .join(format!("controllers-last-seen-{safe}.json")),
+    )
+}
+
+fn save_last_seen(serial: &str, names: &[String]) {
+    let Some(path) = last_seen_path(serial) else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let text = serde_json::json!({
+        "serial": serial,
+        "controllers": names,
+        "seen_at": now,
+    })
+    .to_string();
+    let _ = std::fs::write(path, text);
+}
+
+fn read_last_seen(serial: &str) -> Option<(Vec<String>, u64)> {
+    let path = last_seen_path(serial)?;
+    let text = std::fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let names: Vec<String> = v
+        .get("controllers")?
+        .as_array()?
+        .iter()
+        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+        .collect();
+    let seen_at = v.get("seen_at")?.as_u64()?;
+    if names.is_empty() {
+        return None;
+    }
+    Some((names, seen_at))
 }
 
 #[cfg(test)]

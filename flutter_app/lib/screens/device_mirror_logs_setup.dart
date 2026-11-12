@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
@@ -44,6 +45,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   OtaStatusInfo? _ota;
   List<UxpSetting> _uxp = [];
   bool _singExtrasLoading = false;
+  List<HomeAppStatus> _homeApps = [];
+  bool _homeAppsLoading = false;
 
   @override
   void initState() {
@@ -54,6 +57,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     _loadHomes();
     _loadSnapshots();
     _loadSingularityExtras();
+    _loadHomeApps();
   }
 
   Future<void> _loadDeviceBackups() async {
@@ -116,6 +120,108 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
       _uxp = [];
     }
     if (mounted) setState(() => _singExtrasLoading = false);
+  }
+
+  /// Home apps (Lightning Launcher + Quest Home Switcher): scan the
+  /// headset for what is installed and whether an update is out.
+  Future<void> _loadHomeApps() async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    setState(() => _homeAppsLoading = true);
+    try {
+      _homeApps = await widget.state.backend.homeAppsList(serial);
+    } catch (_) {
+      _homeApps = [];
+    }
+    if (mounted) setState(() => _homeAppsLoading = false);
+  }
+
+  Widget _homeAppRow(HomeAppStatus a) {
+    final serial = widget.state.selectedDevice?.serial;
+    Future<void> reload() async => _loadHomeApps();
+    final status = a.installed
+        ? 'On headset: ${a.installedVersion ?? 'installed'}${a.updateAvailable ? '  •  Update available: ${a.latestVersion ?? ''}' : '  •  Up to date'}'
+        : 'Not on headset. Latest: ${a.latestVersion ?? 'unknown'}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(a.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text(a.detail, style: const TextStyle(fontSize: 13)),
+        Text(status, style: const TextStyle(fontSize: 13)),
+        if (a.downloaded && a.sha256 != null)
+          Text('Downloaded here: ${formatBytes(a.sizeBytes)}  •  SHA-256: ${a.sha256!.substring(0, 12)}…', style: const TextStyle(fontSize: 13)),
+        Text('Source: ${a.source}', style: const TextStyle(fontSize: 13)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton(
+            onPressed: () async {
+              final d = await widget.state.backend.homeAppDownload(a.id);
+              if (mounted) showResult(context, d['ok'] == true, d['ok'] == true ? 'Downloaded ${a.name} ${d['version'] ?? ''} (${formatBytes(d['size_bytes'] ?? 0)}).' : (d['error'] ?? 'Download failed.').toString());
+              await reload();
+            },
+            child: const Text('Download'),
+          ),
+          FilledButton(
+            onPressed: serial == null
+                ? null
+                : () async {
+                    final r = await widget.state.backend.homeAppInstall(serial, a.id);
+                    if (mounted) showResult(context, r.ok, r.message);
+                    await reload();
+                    await _loadHomes();
+                  },
+            child: Text(a.installed ? 'Update' : 'Install'),
+          ),
+          if (a.installed)
+            OutlinedButton(
+              onPressed: serial == null
+                  ? null
+                  : () async {
+                      final r = await widget.state.backend.homeAppOpen(serial, a.id);
+                      if (mounted) showResult(context, r.ok, r.message);
+                    },
+              child: const Text('Open'),
+            ),
+          if (a.installed)
+            OutlinedButton(
+              onPressed: serial == null
+                  ? null
+                  : () async {
+                      final yes = await confirmDialog(context, title: 'Uninstall ${a.name}?', body: 'This removes ${a.name} from the headset. Its settings on the headset are removed too.', confirmLabel: 'Uninstall', destructive: true);
+                      if (!yes) return;
+                      final r = await widget.state.backend.homeAppUninstall(serial, a.id);
+                      if (mounted) showResult(context, r.ok, r.message);
+                      await reload();
+                      await _loadHomes();
+                    },
+              child: const Text('Uninstall'),
+            ),
+        ]),
+      ]),
+    );
+  }
+
+  /// One section as a card in the two-column grid: a title row
+  /// (with the small "i" when the section needs explaining), an
+  /// optional subtitle, and the section's content.
+  Widget _sectionCard({required String title, String? subtitle, String? infoTitle, String? infoBody, required Widget child}) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+            if (infoTitle != null && infoBody != null) InfoButton(infoTitle, infoBody),
+          ]),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+          ],
+          const SizedBox(height: 8),
+          child,
+        ]),
+      ),
+    );
   }
 
   Widget _downloadRow(SingularityDownload d) {
@@ -250,54 +356,31 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
           Text('Device and settings', style: Theme.of(context).textTheme.headlineSmall),
           const Text('Safe settings are at the top. Anything that can break the headset is in the closed Dangerous section below. Rooted settings are in their own closed section, and only show up when this headset is rooted. Most of these settings reset when the headset restarts. Your saved profile is applied again each time you connect.'),
           const SizedBox(height: 12),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: info == null
-                  ? const Text('No headset selected.')
-                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('About this headset', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      Text('Model: ${info.model}'),
-                      Text('Serial: ${info.serial}'),
-                      Text('Firmware: ${info.firmware}'),
-                      Text('Android: ${info.androidVersion}'),
-                      Text('Screen: ${info.resolution}'),
-                      Text('Processor: ${info.cpuAbi}'),
-                    ]),
-            ),
-          ),
-          if (s.controllers != null) ...[
-            Row(children: [
-              const Expanded(child: SectionTitle('Controllers')),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await widget.state.loadRooted();
-                  if (mounted) setState(() {});
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Refresh'),
-              ),
-            ]),
+          CardGrid(cards: [
             Card(
+              clipBehavior: Clip.antiAlias,
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (s.controllers!.names.isEmpty)
-                    const Text('No controllers are awake right now. They sleep within seconds of being put down and vanish from what the headset reports. Pick them up, press a button to wake them, then tap Refresh here.')
-                  else
-                    ...s.controllers!.names.map((n) => Text('• $n')),
-                  const SizedBox(height: 8),
-                  Text(s.controllers!.note, style: const TextStyle(fontSize: 13)),
-                  const SizedBox(height: 8),
-                  const Text('Pair a controller: hold Menu + Y (left) or Menu + B (right) until the LED blinks, then pair it in the headset under Settings, Devices.', style: TextStyle(fontSize: 13)),
-                ]),
+                child: info == null
+                    ? const Text('No headset selected.')
+                    : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('About this headset', style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 8),
+                        Text('Model: ${info.model}'),
+                        Text('Serial: ${info.serial}'),
+                        Text('Firmware: ${info.firmware}'),
+                        Text('Android: ${info.androidVersion}'),
+                        Text('Screen: ${info.resolution}'),
+                        Text('Processor: ${info.cpuAbi}'),
+                      ]),
               ),
             ),
-          ],
-          const SectionTitleWithInfo('Saved profiles', subtitle: 'Pick one and it is applied now and again on every connect.', infoTitle: 'Saved profiles', infoBody: 'A profile is a saved set of screen speed, CPU and GPU level. Pick one and it is applied to the headset now, and again every time you connect it. The profile is saved on this computer, per headset.'),
-          Wrap(spacing: 8, children: s.profiles.map((p) => ChoiceChip(
+            _sectionCard(
+              title: 'Saved profiles',
+              subtitle: 'Pick one and it is applied now and again on every connect.',
+              infoTitle: 'Saved profiles',
+              infoBody: 'A profile is a saved set of screen speed, CPU and GPU level. Pick one and it is applied to the headset now, and again every time you connect it. The profile is saved on this computer, per headset.',
+              child: Wrap(spacing: 8, children: s.profiles.map((p) => ChoiceChip(
                 label: Text('${p.name} (${p.refreshRate} Hz)'),
                 selected: s.activeProfile == p.name,
                 onSelected: (_) async {
@@ -310,115 +393,137 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                   }
                 },
               )).toList()),
-          const SectionTitle('Screen speed', subtitle: 'Higher looks smoother but uses more battery. Quest 2 supports up to 120 Hz.'),
-          DropdownButton<int>(
-            value: _refreshRates.contains(_refresh) ? _refresh : _refreshRates.last,
-            items: _refreshRates.map((v) => DropdownMenuItem(value: v, child: Text('$v Hz'))).toList(),
-            onChanged: (v) async {
-              if (v == null) return;
-              setState(() => _refresh = v);
-              await _apply('debug.oculus.refreshRate', '$v', 'Screen speed set to $v Hz.');
-            },
-          ),
-          const SectionTitle('Speed (CPU / GPU level)', subtitle: '0 is coolest and slowest, 4 is fastest and hottest. 2 is the normal setting.'),
-          Text('Processor level: $_cpu'),
-          Slider(value: _cpu.toDouble(), min: 0, max: 4, divisions: 4, label: '$_cpu', onChanged: (v) async {
-            setState(() => _cpu = v.toInt());
-            await _apply('debug.oculus.cpuLevel', '$_cpu', 'Processor level set to $_cpu.');
-          }),
-          Text('Graphics level: $_gpu'),
-          Slider(value: _gpu.toDouble(), min: 0, max: 4, divisions: 4, label: '$_gpu', onChanged: (v) async {
-            setState(() => _gpu = v.toInt());
-            await _apply('debug.oculus.gpuLevel', '$_gpu', 'Graphics level set to $_gpu.');
-          }),
-          const SectionTitle('Render resolution', subtitle: 'Higher looks sharper but is slower and hotter. Default is what the headset normally uses. This resets on restart.'),
-          DropdownButton<int>(
-            value: _texture,
-            items: const [
-              DropdownMenuItem(value: 0, child: Text('Default')),
-              DropdownMenuItem(value: 1024, child: Text('1024 x 1024')),
-              DropdownMenuItem(value: 1280, child: Text('1280 x 1280')),
-              DropdownMenuItem(value: 1536, child: Text('1536 x 1536')),
-              DropdownMenuItem(value: 2048, child: Text('2048 x 2048')),
-            ],
-            onChanged: (v) async {
-              if (v == null) return;
-              setState(() => _texture = v);
-              if (v == 0) {
-                showResult(context, true, 'Render resolution back to default on next app launch. Restart an app to see it.');
-                return;
-              }
-              await _apply('debug.oculus.textureWidth', '$v', 'Render width set to $v.');
-              await _apply('debug.oculus.textureHeight', '$v', 'Render resolution set to ${v}x$v.');
-            },
-          ),
-          const SectionTitle('Brightness'),
-          Slider(value: _brightness, onChanged: (v) async {
-            setState(() => _brightness = v);
-            await _apply('system:screen_brightness', '${(v * 255).toInt()}', 'Brightness set.');
-          }),
-          SwitchListTile(
-            title: const Text('Automatic brightness'),
-            subtitle: const Text('Let the headset adjust brightness by itself.'),
-            value: _autoBrightness,
-            onChanged: (v) async {
-              setState(() => _autoBrightness = v);
-              await _apply('system:screen_brightness_mode', v ? '1' : '0', v ? 'Automatic brightness on.' : 'Automatic brightness off.');
-            },
-          ),
-          const SectionTitle('Screen timeout', subtitle: 'How long before the screen turns off when you are not using it.'),
-          DropdownButton<int>(
-            value: _timeout,
-            items: const [
-              DropdownMenuItem(value: 15000, child: Text('15 seconds')),
-              DropdownMenuItem(value: 30000, child: Text('30 seconds')),
-              DropdownMenuItem(value: 60000, child: Text('1 minute')),
-              DropdownMenuItem(value: 120000, child: Text('2 minutes')),
-              DropdownMenuItem(value: 300000, child: Text('5 minutes')),
-            ],
-            onChanged: (v) async {
-              if (v == null) return;
-              setState(() => _timeout = v);
-              await _apply('system:screen_off_timeout', '$v', 'Screen timeout set.');
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Keep screen on while charging'),
-            subtitle: const Text('The screen stays on while the headset is plugged in.'),
-            value: _stayAwake,
-            onChanged: (v) async {
-              setState(() => _stayAwake = v);
-              await _apply('global:stay_on_while_plugged_in', v ? '3' : '0', v ? 'Screen will stay on while charging.' : 'Screen will turn off as normal while charging.');
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Full rate capture'),
-            subtitle: const Text('Record video at the full screen speed. Uses more battery and storage.'),
-            value: _fullRate,
-            onChanged: (v) async {
-              setState(() => _fullRate = v);
-              await _apply('debug.oculus.fullRateCapture', v ? '1' : '0', v ? 'Full rate capture on.' : 'Full rate capture off.');
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Pause Guardian'),
-            subtitle: const Text('Turns the playspace boundary off for this session. Turn it back on before you play near walls or furniture.'),
-            value: _guardianPaused,
-            onChanged: (v) async {
-              setState(() => _guardianPaused = v);
-              await _apply('debug.oculus.guardian_pause', v ? '1' : '0', v ? 'Guardian paused.' : 'Guardian back on.');
-            },
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () => showResult(context, true, 'Wi-Fi settings open on the headset. Put the headset on to pick a network there.'),
-            icon: const Icon(Icons.wifi),
-            label: const Text('Open Wi-Fi settings on headset'),
-          ),
-          const SectionTitleWithInfo('Device backups', subtitle: 'Settings, Guardian data, Wi-Fi configs, and an inventory of your apps. Apps themselves live in the library, not in the device backup.', infoTitle: 'Device backups', infoBody: 'A device backup saves the headset\'s settings, Guardian play area, Wi-Fi passwords, and a list of which apps are installed. The apps themselves are not copied into it. Restoring it puts the settings back; the apps come back from their own backups in the library.'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+            ),
+            _sectionCard(
+              title: 'Screen speed',
+              subtitle: 'Higher looks smoother but uses more battery. Quest 2 supports up to 120 Hz.',
+              child: DropdownButton<int>(
+                value: _refreshRates.contains(_refresh) ? _refresh : _refreshRates.last,
+                items: _refreshRates.map((v) => DropdownMenuItem(value: v, child: Text('$v Hz'))).toList(),
+                onChanged: (v) async {
+                  if (v == null) return;
+                  setState(() => _refresh = v);
+                  await _apply('debug.oculus.refreshRate', '$v', 'Screen speed set to $v Hz.');
+                },
+              ),
+            ),
+            _sectionCard(
+              title: 'Speed (CPU / GPU level)',
+              subtitle: '0 is coolest and slowest, 4 is fastest and hottest. 2 is the normal setting.',
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Processor level: $_cpu'),
+                Slider(value: _cpu.toDouble(), min: 0, max: 4, divisions: 4, label: '$_cpu', onChanged: (v) async {
+                  setState(() => _cpu = v.toInt());
+                  await _apply('debug.oculus.cpuLevel', '$_cpu', 'Processor level set to $_cpu.');
+                }),
+                Text('Graphics level: $_gpu'),
+                Slider(value: _gpu.toDouble(), min: 0, max: 4, divisions: 4, label: '$_gpu', onChanged: (v) async {
+                  setState(() => _gpu = v.toInt());
+                  await _apply('debug.oculus.gpuLevel', '$_gpu', 'Graphics level set to $_gpu.');
+                }),
+              ]),
+            ),
+            _sectionCard(
+              title: 'Render resolution',
+              subtitle: 'Higher looks sharper but is slower and hotter. Default is what the headset normally uses. This resets on restart.',
+              child: DropdownButton<int>(
+                value: _texture,
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('Default')),
+                  DropdownMenuItem(value: 1024, child: Text('1024 x 1024')),
+                  DropdownMenuItem(value: 1280, child: Text('1280 x 1280')),
+                  DropdownMenuItem(value: 1536, child: Text('1536 x 1536')),
+                  DropdownMenuItem(value: 2048, child: Text('2048 x 2048')),
+                ],
+                onChanged: (v) async {
+                  if (v == null) return;
+                  setState(() => _texture = v);
+                  if (v == 0) {
+                    showResult(context, true, 'Render resolution back to default on next app launch. Restart an app to see it.');
+                    return;
+                  }
+                  await _apply('debug.oculus.textureWidth', '$v', 'Render width set to $v.');
+                  await _apply('debug.oculus.textureHeight', '$v', 'Render resolution set to ${v}x$v.');
+                },
+              ),
+            ),
+            _sectionCard(
+              title: 'Brightness',
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Slider(value: _brightness, onChanged: (v) async {
+                  setState(() => _brightness = v);
+                  await _apply('system:screen_brightness', '${(v * 255).toInt()}', 'Brightness set.');
+                }),
+                SwitchListTile(
+                  title: const Text('Automatic brightness'),
+                  subtitle: const Text('Let the headset adjust brightness by itself.'),
+                  value: _autoBrightness,
+                  onChanged: (v) async {
+                    setState(() => _autoBrightness = v);
+                    await _apply('system:screen_brightness_mode', v ? '1' : '0', v ? 'Automatic brightness on.' : 'Automatic brightness off.');
+                  },
+                ),
+              ]),
+            ),
+            _sectionCard(
+              title: 'Screen timeout',
+              subtitle: 'How long before the screen turns off when you are not using it.',
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                DropdownButton<int>(
+                  value: _timeout,
+                  items: const [
+                    DropdownMenuItem(value: 15000, child: Text('15 seconds')),
+                    DropdownMenuItem(value: 30000, child: Text('30 seconds')),
+                    DropdownMenuItem(value: 60000, child: Text('1 minute')),
+                    DropdownMenuItem(value: 120000, child: Text('2 minutes')),
+                    DropdownMenuItem(value: 300000, child: Text('5 minutes')),
+                  ],
+                  onChanged: (v) async {
+                    if (v == null) return;
+                    setState(() => _timeout = v);
+                    await _apply('system:screen_off_timeout', '$v', 'Screen timeout set.');
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Keep screen on while charging'),
+                  subtitle: const Text('The screen stays on while the headset is plugged in.'),
+                  value: _stayAwake,
+                  onChanged: (v) async {
+                    setState(() => _stayAwake = v);
+                    await _apply('global:stay_on_while_plugged_in', v ? '3' : '0', v ? 'Screen will stay on while charging.' : 'Screen will turn off as normal while charging.');
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Full rate capture'),
+                  subtitle: const Text('Record video at the full screen speed. Uses more battery and storage.'),
+                  value: _fullRate,
+                  onChanged: (v) async {
+                    setState(() => _fullRate = v);
+                    await _apply('debug.oculus.fullRateCapture', v ? '1' : '0', v ? 'Full rate capture on.' : 'Full rate capture off.');
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Pause Guardian'),
+                  subtitle: const Text('Turns the playspace boundary off for this session. Turn it back on before you play near walls or furniture.'),
+                  value: _guardianPaused,
+                  onChanged: (v) async {
+                    setState(() => _guardianPaused = v);
+                    await _apply('debug.oculus.guardian_pause', v ? '1' : '0', v ? 'Guardian paused.' : 'Guardian back on.');
+                  },
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => showResult(context, true, 'Wi-Fi settings open on the headset. Put the headset on to pick a network there.'),
+                  icon: const Icon(Icons.wifi),
+                  label: const Text('Open Wi-Fi settings on headset'),
+                ),
+              ]),
+            ),
+            _sectionCard(
+              title: 'Device backups',
+              subtitle: 'Settings, Guardian data, Wi-Fi configs, and an inventory of your apps. Apps themselves live in the library, not in the device backup.',
+              infoTitle: 'Device backups',
+              infoBody: 'A device backup saves the headset\'s settings, Guardian play area, Wi-Fi passwords, and a list of which apps are installed. The apps themselves are not copied into it. Restoring it puts the settings back; the apps come back from their own backups in the library.',
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 FilledButton.icon(
                   onPressed: s.selectedDevice == null
@@ -447,11 +552,11 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                       )),
               ]),
             ),
-          ),
-          const SectionTitleWithInfo('Headset snapshots', subtitle: 'A named save point for the whole headset: settings, Guardian data, Wi-Fi configs, an inventory of your apps, and the settings profile that was on. Apps reinstall from their library backups, they are not copied into the snapshot.', infoTitle: 'Headset snapshots', infoBody: 'A snapshot is a save point for the whole headset, like a save file in a game. It keeps the settings, Guardian area, Wi-Fi, the list of apps, and which settings profile was on. Restoring it puts all of that back. The apps themselves are reinstalled from the library, so keep your app backups too.'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+            _sectionCard(
+              title: 'Headset snapshots',
+              subtitle: 'A named save point for the whole headset: settings, Guardian data, Wi-Fi configs, an inventory of your apps, and the settings profile that was on. Apps reinstall from their library backups, they are not copied into the snapshot.',
+              infoTitle: 'Headset snapshots',
+              infoBody: 'A snapshot is a save point for the whole headset, like a save file in a game. It keeps the settings, Guardian area, Wi-Fi, the list of apps, and which settings profile was on. Restoring it puts all of that back. The apps themselves are reinstalled from the library, so keep your app backups too.',
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Expanded(child: TextField(controller: _snapshotName, decoration: const InputDecoration(labelText: 'Snapshot name, for example "Before rooting"', border: OutlineInputBorder()))),
@@ -495,51 +600,91 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                       )),
               ]),
             ),
-          ),
-          const SectionTitleWithInfo('Homes', subtitle: 'The home environments on this headset. The active one is marked. Switching uses the headset\u2019s own home command; if it refuses, open the headset\u2019s Home settings and pick there.', infoTitle: 'Homes', infoBody: 'A home is the place you land in when the headset starts: the 3D room and the dock you launch apps from. The active one is marked. The headset itself decides whether the switch is allowed; on current firmware it refuses the direct command, so the button opens the home settings on the headset and you pick there.'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+            _sectionCard(
+              title: 'Homes',
+              subtitle: 'The launchers on this headset (Lightning Launcher and any other third-party home). Meta Home, the stock launcher, is not listed: it is the default, and you switch to it in the headset\u2019s Home settings.',
+              infoTitle: 'Homes',
+              infoBody: 'A home is the place you land in when the headset starts: the 3D room and the dock you launch apps from. This list shows launchers you installed, not Meta Home itself. Set active tries the headset\u2019s own switch command; on current firmware the headset refuses it, so the button opens the home settings on the headset and you pick there. Open shows a launcher once without changing the default.',
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (_homes.isEmpty)
-                  const Text('No home apps found, or the headset has not answered yet. Tap Refresh below.')
-                else
+                  const Text('No third-party launcher is installed yet. Install Lightning Launcher from the Home apps section below, or pick a home in the headset\u2019s Home settings.')
+                else ...[
+                  if (!_homes.any((h) => h.isCurrent))
+                    const Text('Meta Home is the active home right now. Open a launcher below to try it, or set one active to make it the default.'),
                   ..._homes.map((h) => ListTile(
                         leading: const Icon(Icons.home),
                         title: Text(h.label),
                         subtitle: Text(h.component),
                         trailing: h.isCurrent
                             ? const Chip(label: Text('Active', style: TextStyle(color: Color(0xFF070B14), fontWeight: FontWeight.bold)), backgroundColor: Color(0xFF38BDF8))
-                            : TextButton(
-                                onPressed: () async {
-                                  final r = await s.backend.homesSet(s.selectedDevice!.serial, h.component);
-                                  if (!r.ok && mounted) {
-                                    final open = await confirmDialog(context, title: 'The headset refused the switch', body: '${r.message}\n\nOpen the headset\u2019s Home settings instead and pick the home there?', confirmLabel: 'Open Home settings');
-                                    if (open) {
-                                      final r2 = await s.backend.homesOpenSettings(s.selectedDevice!.serial);
-                                      if (mounted) showResult(context, r2.ok, r2.message);
+                            : Row(mainAxisSize: MainAxisSize.min, children: [
+                                TextButton(
+                                  onPressed: () async {
+                                    final r = await s.backend.homesOpen(s.selectedDevice!.serial, h.component);
+                                    if (mounted) showResult(context, r.ok, r.message);
+                                  },
+                                  child: const Text('Open'),
+                                ),
+                                TextButton(
+                                  onPressed: () async {
+                                    final r = await s.backend.homesSet(s.selectedDevice!.serial, h.component);
+                                    if (!r.ok && mounted) {
+                                      final open = await confirmDialog(context, title: 'The headset refused the switch', body: '${r.message}\n\nOpen the headset\u2019s Home settings instead and pick the home there?', confirmLabel: 'Open Home settings');
+                                      if (open) {
+                                        final r2 = await s.backend.homesOpenSettings(s.selectedDevice!.serial);
+                                        if (mounted) showResult(context, r2.ok, r2.message);
+                                      }
+                                    } else if (mounted) {
+                                      showResult(context, true, r.message);
                                     }
-                                  } else if (mounted) {
-                                    showResult(context, true, r.message);
-                                  }
-                                  await _loadHomes();
-                                },
-                                child: const Text('Set active'),
-                              ),
+                                    await _loadHomes();
+                                  },
+                                  child: const Text('Set active'),
+                                ),
+                              ]),
                       )),
+                ],
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () async => _loadHomes(),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh homes'),
-                ),
+                Row(children: [
+                  OutlinedButton.icon(
+                    onPressed: () async => _loadHomes(),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Refresh homes'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: s.selectedDevice == null
+                        ? null
+                        : () async {
+                            final r = await s.backend.homesOpenMeta(s.selectedDevice!.serial);
+                            if (mounted) showResult(context, r.ok, r.message);
+                          },
+                    icon: const Icon(Icons.home),
+                    label: const Text('Open Meta Home once'),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                const Text('Open a settings screen on the headset', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final entry in const [('Wi-Fi', 'wifi'), ('Display', 'display'), ('Storage', 'storage'), ('Apps', 'apps'), ('About', 'about')])
+                    OutlinedButton(
+                      onPressed: s.selectedDevice == null
+                          ? null
+                          : () async {
+                              final r = await s.backend.homesOpenSettingsScreen(s.selectedDevice!.serial, entry.$2);
+                              if (mounted) showResult(context, r.ok, r.message);
+                            },
+                      child: Text(entry.$1),
+                    ),
+                ]),
               ]),
             ),
-          ),
-          const SectionTitleWithInfo('Battery and health', subtitle: 'Battery, storage, uptime, and when this headset was last backed up.', infoTitle: 'Battery and health', infoBody: 'A quick read of the headset: how much battery is left and how warm it is, how much storage is used, how long it has been on, and when the last device backup was taken. Anything that looks wrong here is worth a look before you start a long session.'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+            _sectionCard(
+              title: 'Headset Health',
+              subtitle: 'Battery, storage, uptime, controllers, and when this headset was last backed up.',
+              infoTitle: 'Headset Health',
+              infoBody: 'A quick read of the headset: how much battery is left and how warm it is, how much storage is used, how long it has been on, which controllers were last seen, and when the last device backup was taken. Anything that looks wrong here is worth a look before you start a long session.',
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (_healthLoading)
                   const Text('Checking the headset\u2026')
@@ -553,15 +698,41 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                   if (_health!.uptime != null) Text('Uptime: ${_health!.uptime}'),
                   Text('Last device backup: ${_health!.lastBackup ?? 'never'}'),
                 ],
+                const SizedBox(height: 12),
+                const Text('Controllers', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                if (s.controllers == null)
+                  const Text('Controller info is still loading.')
+                else if (s.controllers!.names.isEmpty)
+                  const Text('No controllers have been seen yet. Pick one up, press a button to wake it, then tap Refresh controllers below.')
+                else if (s.controllers!.asleep)
+                  Text('Asleep now. Last seen ${s.controllers!.lastSeen ?? 'a while ago'}: ${s.controllers!.names.join(', ')}. Pick one up, press a button to wake it, then tap Refresh controllers below.')
+                else
+                  ...s.controllers!.names.map((n) => Text('• $n (awake)')),
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () async => _loadHealth(),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh health'),
-                ),
+                const Text('Controller battery is not readable from this computer; check it in the headset (quick settings shows the controller batteries). Left and right cannot be told apart from here.', style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 4),
+                const Text('Pair a controller: hold Menu + Y (left) or Menu + B (right) until the LED blinks, then pair it in the headset under Settings, Devices.', style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  OutlinedButton.icon(
+                    onPressed: () async => _loadHealth(),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Refresh health'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await widget.state.loadRooted();
+                      if (mounted) setState(() {});
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Refresh controllers'),
+                  ),
+                ]),
               ]),
             ),
-          ),
+          ]),
           const SizedBox(height: 16),
           Card(
             child: ExpansionTile(
@@ -685,6 +856,54 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                         icon: const Icon(Icons.refresh),
                         label: const Text('Restart home UI'),
                       ),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        const Expanded(child: Text('Home apps', style: TextStyle(fontWeight: FontWeight.bold))),
+                        InfoButton('Home apps', 'The two apps to use instead of a custom home. Lightning Launcher replaces the apps menu, Quest Home Switcher manages custom 3D home environments. The list is scanned from the headset, so it knows what is installed and whether an update is out. The APKs are downloaded from the authors\u2019 GitHub releases when you tap Download; nothing is bundled with ReOculus.'),
+                      ]),
+                      const SizedBox(height: 8),
+                      if (_homeAppsLoading)
+                        const Text('Checking the headset…')
+                      else if (_homeApps.isEmpty)
+                        const Text('Could not read the home apps. Tap Refresh below.')
+                      else
+                        ..._homeApps.map((a) => _homeAppRow(a)),
+                      OutlinedButton.icon(
+                        onPressed: () async => _loadHomeApps(),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh home apps'),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        const Expanded(child: Text('Quest Home Switcher', style: TextStyle(fontWeight: FontWeight.bold))),
+                        InfoButton('Quest Home Switcher', 'Quest Home Switcher manages custom 3D home environments: the official ones and about 250 community homes. The catalogue of homes lives inside the app itself, so browsing and viewing the homes happens on the headset, in Quest Home Switcher. The app is not open source; ReOculus only downloads its published release APK, never its code.'),
+                      ]),
+                      const SizedBox(height: 8),
+                      const Text('Browse and view custom homes inside Quest Home Switcher on the headset: it has the full catalogue (official + about 250 community homes) with search, sorting and previews. Download and apply a home there; ReOculus just installs and opens the app.', style: TextStyle(fontSize: 13)),
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        FilledButton(
+                          onPressed: s.selectedDevice == null
+                              ? null
+                              : () async {
+                                  final r = await s.backend.homeAppOpen(s.selectedDevice!.serial, 'qhs');
+                                  if (mounted) showResult(context, r.ok, r.message);
+                                },
+                          child: const Text('Browse custom homes'),
+                        ),
+                        OutlinedButton(
+                          onPressed: s.selectedDevice == null
+                              ? null
+                              : () async {
+                                  final r = await s.backend.homeAppInstall(s.selectedDevice!.serial, 'qhs');
+                                  if (mounted) showResult(context, r.ok, r.message);
+                                  await _loadHomeApps();
+                                },
+                          child: const Text('Install Quest Home Switcher'),
+                        ),
+                      ]),
+                      const SizedBox(height: 8),
+                      const Text('Source: github.com/nikitat21/Quest-Home-Switcher', style: TextStyle(fontSize: 13)),
                     ]),
                   ),
                 ],
@@ -899,52 +1118,75 @@ class _MirrorScreenState extends State<MirrorScreen> {
             ]),
           ),
         ),
-        const SectionTitleWithInfo('Quality', subtitle: 'Picked automatically, no setting to change. USB uses Balanced, Wi-Fi uses Performance, so the mirror stays smooth instead of glitching.', infoTitle: 'Mirror quality', infoBody: 'The mirror quality is picked for you, there is no setting to change. USB uses Balanced (1920, 8M, 60) and Wi-Fi uses Performance (1280, 4M, 30), because Wi-Fi cannot keep up with the higher one and the picture starts glitching. If the picture smears after you open the Quest menu, tap Restart mirror.'),
-        const SectionTitle('Record and screenshots'),
-        Row(children: [
-          OutlinedButton.icon(
-            onPressed: () async {
-              final r = await widget.state.backend.openGalleryFolder();
-              if (mounted) showResult(context, r.ok, r.message);
-            },
-            icon: const Icon(Icons.folder_open),
-            label: const Text('Open folder'),
+        CardGrid(cards: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const Expanded(child: Text('Quality', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                  InfoButton('Mirror quality', 'The mirror quality is picked for you, there is no setting to change. USB uses Balanced (1920, 8M, 60) and Wi-Fi uses Performance (1280, 4M, 30), because Wi-Fi cannot keep up with the higher one and the picture starts glitching. If the picture smears after you open the Quest menu, tap Restart mirror.'),
+                ]),
+                const SizedBox(height: 4),
+                const Text('Picked automatically, no setting to change. USB uses Balanced, Wi-Fi uses Performance, so the mirror stays smooth instead of glitching.', style: TextStyle(fontSize: 13)),
+              ]),
+            ),
           ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: serial == null
-                ? null
-                : () async {
-                    setState(() => _recording = !_recording);
-                    if (_recording) {
-                      final r = await widget.state.backend.startRecording(serial);
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Record and screenshots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final r = await widget.state.backend.openGalleryFolder();
                       if (mounted) showResult(context, r.ok, r.message);
-                      if (r.ok && mounted) {
-                        setState(() => _lastSaved = (r.data['path'] as String?) ?? r.message);
-                        widget.state.log('Recording saved');
-                      }
-                    }
-                  },
-            icon: Icon(_recording ? Icons.stop : Icons.fiber_manual_record),
-            label: Text(_recording ? 'Stop recording' : 'Record video'),
-          ),
-          const SizedBox(width: 12),
-          OutlinedButton.icon(
-            onPressed: serial == null
-                ? null
-                : () async {
-                    final r = await widget.state.backend.screenshot(serial, '');
-                    if (mounted) showResult(context, r.ok, r.message);
-                    if (r.ok && mounted) {
-                      setState(() => _lastSaved = (r.data['path'] as String?) ?? r.message);
-                      widget.state.log('Screenshot saved');
-                    }
-                  },
-            icon: const Icon(Icons.camera_alt),
-            label: const Text('Take screenshot'),
+                    },
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Open folder'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: serial == null
+                        ? null
+                        : () async {
+                            setState(() => _recording = !_recording);
+                            if (_recording) {
+                              final r = await widget.state.backend.startRecording(serial);
+                              if (mounted) showResult(context, r.ok, r.message);
+                              if (r.ok && mounted) {
+                                setState(() => _lastSaved = (r.data['path'] as String?) ?? r.message);
+                                widget.state.log('Recording saved');
+                              }
+                            }
+                          },
+                    icon: Icon(_recording ? Icons.stop : Icons.fiber_manual_record),
+                    label: Text(_recording ? 'Stop recording' : 'Record video'),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: serial == null
+                        ? null
+                        : () async {
+                            final r = await widget.state.backend.screenshot(serial, '');
+                            if (mounted) showResult(context, r.ok, r.message);
+                            if (r.ok && mounted) {
+                              setState(() => _lastSaved = (r.data['path'] as String?) ?? r.message);
+                              widget.state.log('Screenshot saved');
+                            }
+                          },
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Take screenshot'),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+                const Text('Video has no sound. A recording stops after about 3 minutes; start it again for longer clips. Screenshots and recordings are saved in ~/quest-recordings/ and shown in Files, then Gallery.', style: TextStyle(fontSize: 13)),
+              ]),
+            ),
           ),
         ]),
-        const Text('Video has no sound. A recording stops after about 3 minutes; start it again for longer clips. Screenshots and recordings are saved in ~/quest-recordings/ and shown in Files, then Gallery.', style: TextStyle(fontSize: 13)),
         if (_lastSaved != null) ...[
           const SizedBox(height: 8),
           Card(child: ListTile(leading: const Icon(Icons.check_circle), title: Text('Saved: $_lastSaved'))),
@@ -1232,10 +1474,21 @@ class _SetupScreenState extends State<SetupScreen> {
   bool _devMode = true;
   bool _udev = false;
   bool _allowed = true;
+  PathsInfo? _paths;
 
   @override
   void initState() {
     super.initState();
+    _loadPaths();
+  }
+
+  Future<void> _loadPaths() async {
+    try {
+      _paths = await widget.state.backend.pathsGet();
+    } catch (_) {
+      _paths = null;
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _openUrl(String url) async {
@@ -1259,59 +1512,165 @@ class _SetupScreenState extends State<SetupScreen> {
               color: Colors.orange.shade100,
               child: ListTile(leading: const Icon(Icons.warning, color: Colors.black87), title: Text(s.backendError!, style: const TextStyle(color: Colors.black87))),
             ),
-          const SectionTitle('First run checklist'),
-          _CheckTile(title: '1. Create a free Meta developer account', body: 'This is the one Meta step. It cannot be done inside this app and you do not sign in here. Open developers.meta.com in your browser and create a free developer organisation.', done: _devMode, onChanged: (v) => setState(() => _devMode = v ?? false), onOpen: () => _openUrl('https://developers.meta.com')),
-          _CheckTile(title: '2. Turn on Developer Mode on the headset', body: 'In the Meta Horizon phone app: Menu, Devices, your headset, Headset Settings, Developer Mode ON.', done: _devMode, onChanged: (v) => setState(() => _devMode = v ?? false)),
-          _CheckTile(title: '3. Allow USB debugging', body: 'Plug the headset in. Put it on. When it asks "Allow USB debugging?", tap Allow and tick "Always allow from this computer".', done: _allowed, onChanged: (v) => setState(() => _allowed = v ?? false)),
-          _CheckTile(title: '4. Linux USB permission (udev rule)', body: 'On Ubuntu, install the Android udev rules so the headset is not listed as "no permissions": sudo apt install android-sdk-platform-tools-common, then unplug and plug the headset back in.', done: _udev, onChanged: (v) => setState(() => _udev = v ?? false)),
-          const SectionTitle('Design'),
-          const Text('Design picked: Dark VR Neon, blue instead of purple. You can preview the other looks here, but VR Neon stays the default.'),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: DesignDirection.values.map((d) => ChoiceChip(label: Text(d.name), selected: s.design == d, onSelected: (_) => s.setDesign(d))).toList()),
-          const SizedBox(height: 8),
-          Text(s.design.plainDescription),
-          const SectionTitle('Backend'),
-          const Row(children: [
-            Text('Mode: ', style: TextStyle(fontWeight: FontWeight.bold)),
-            Text('Real backend (questctl). No demo mode.'),
-          ]),
-          const SizedBox(height: 8),
-          // The backend connects itself on launch: the AppImage
-          // bundles questctl, otherwise the dev build next to the
-          // app is used. Nothing to type and nothing to connect.
-          // This is just so you can see where it lives.
-          Text('Backend location:', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-          SelectableText(s.backendPath ?? 'Not connected yet', style: const TextStyle(fontFamily: 'monospace')),
-          const SizedBox(height: 8),
-          Wrap(spacing: 12, children: [
-            OutlinedButton.icon(
-              onPressed: s.backendPath == null
-                  ? null
-                  : () async {
-                      final dir = File(s.backendPath!).parent.path;
-                      try {
-                        await Process.run('xdg-open', [dir]);
-                      } catch (_) {}
-                    },
-              icon: const Icon(Icons.folder_open),
-              label: const Text('Open backend folder'),
+          CardGrid(cards: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('First run checklist', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  _CheckTile(title: '1. Create a free Meta developer account', body: 'This is the one Meta step. It cannot be done inside this app and you do not sign in here. Open developers.meta.com in your browser and create a free developer organisation.', done: _devMode, onChanged: (v) => setState(() => _devMode = v ?? false), onOpen: () => _openUrl('https://developers.meta.com')),
+                  _CheckTile(title: '2. Turn on Developer Mode on the headset', body: 'In the Meta Horizon phone app: Menu, Devices, your headset, Headset Settings, Developer Mode ON.', done: _devMode, onChanged: (v) => setState(() => _devMode = v ?? false)),
+                  _CheckTile(title: '3. Allow USB debugging', body: 'Plug the headset in. Put it on. When it asks "Allow USB debugging?", tap Allow and tick "Always allow from this computer".', done: _allowed, onChanged: (v) => setState(() => _allowed = v ?? false)),
+                  _CheckTile(title: '4. Linux USB permission (udev rule)', body: 'On Ubuntu, install the Android udev rules so the headset is not listed as "no permissions": sudo apt install android-sdk-platform-tools-common, then unplug and plug the headset back in.', done: _udev, onChanged: (v) => setState(() => _udev = v ?? false)),
+                ]),
+              ),
             ),
-            OutlinedButton.icon(
-              onPressed: s.backendPath == null
-                  ? null
-                  : () async {
-                      await Clipboard.setData(ClipboardData(text: s.backendPath!));
-                      if (mounted) showResult(context, true, 'Backend path copied.');
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Design', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  const Text('Design picked: Dark VR Neon, blue instead of purple. You can preview the other looks here, but VR Neon stays the default.'),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 8, children: DesignDirection.values.map((d) => ChoiceChip(label: Text(d.name), selected: s.design == d, onSelected: (_) => s.setDesign(d))).toList()),
+                  const SizedBox(height: 8),
+                  Text(s.design.plainDescription),
+                ]),
+              ),
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Backend', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  const Row(children: [
+                    Text('Mode: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('Real backend (questctl). No demo mode.'),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text('Backend location:', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  SelectableText(s.backendPath ?? 'Not connected yet', style: const TextStyle(fontFamily: 'monospace')),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 12, children: [
+                    OutlinedButton.icon(
+                      onPressed: s.backendPath == null
+                          ? null
+                          : () async {
+                              final dir = File(s.backendPath!).parent.path;
+                              try {
+                                await Process.run('xdg-open', [dir]);
+                              } catch (_) {}
+                            },
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('Open backend folder'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: s.backendPath == null
+                          ? null
+                          : () async {
+                              await Clipboard.setData(ClipboardData(text: s.backendPath!));
+                              if (mounted) showResult(context, true, 'Backend path copied.');
+                            },
+                      icon: const Icon(Icons.copy),
+                      label: const Text('Copy path'),
+                    ),
+                  ]),
+                ]),
+              ),
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Expanded(child: Text('Storage locations', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                    InfoButton('Storage locations', 'Backups and the APK library share one folder; screenshots and recordings have their own. Moving a location does not move the files already there: the new folder starts empty, and the old one is left alone, so nothing is lost. The library will look empty until backups are made or APKs are imported there.'),
+                  ]),
+                  const SizedBox(height: 4),
+                  const Text('Where backups, the APK library, screenshots and recordings are kept on this computer. Move them if you keep your files somewhere else, like a bigger drive.', style: TextStyle(fontSize: 13)),
+                if (_paths == null)
+                  const Text('Storage locations are still loading.')
+                else ...[
+                  const Text('Backups and APK library', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SelectableText(_paths!.backupRoot, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+                  Text(_paths!.backupRootIsDefault ? 'Default location.' : 'Custom location.', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Pick the backups and library folder');
+                      if (picked == null) return;
+                      final p = await widget.state.backend.pathsSet(backupRoot: picked);
+                      if (mounted) {
+                        if (p != null) {
+                          setState(() => _paths = p);
+                          showResult(context, true, 'Backups and library will go to $picked from now on. Files already there were not moved.');
+                        } else {
+                          showResult(context, false, 'Could not change the backup folder.');
+                        }
+                      }
                     },
-              icon: const Icon(Icons.copy),
-              label: const Text('Copy path'),
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Change backups folder'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Screenshots and recordings', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SelectableText(_paths!.recordingsRoot, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+                  Text(_paths!.recordingsRootIsDefault ? 'Default location.' : 'Custom location.', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Pick the screenshots and recordings folder');
+                      if (picked == null) return;
+                      final p = await widget.state.backend.pathsSet(recordingsRoot: picked);
+                      if (mounted) {
+                        if (p != null) {
+                          setState(() => _paths = p);
+                          showResult(context, true, 'Screenshots and recordings will go to $picked from now on. Files already there were not moved.');
+                        } else {
+                          showResult(context, false, 'Could not change the recordings folder.');
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Change recordings folder'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final p = await widget.state.backend.pathsReset();
+                      if (mounted) {
+                        if (p != null) {
+                          setState(() => _paths = p);
+                          showResult(context, true, 'Back to the default folders.');
+                        } else {
+                          showResult(context, false, 'Could not reset the folders.');
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.restore),
+                    label: const Text('Reset to defaults'),
+                  ),
+                ],
+              ]),
+            ),
+          ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  const Text('ReOculus 0.2.19. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
+                  const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
+                  const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
+                  const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),
+                ]),
+              ),
             ),
           ]),
-          const SectionTitle('About'),
-          const Text('ReOculus 0.2.18. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer.'),
-          const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
-          const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
-          const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),
         ]),
       ),
     );

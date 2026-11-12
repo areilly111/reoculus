@@ -75,6 +75,29 @@ class SectionTitleWithInfo extends StatelessWidget {
       );
 }
 
+/// Two cards per row when the window is wide enough, one per row on
+/// a narrow screen (phone, small window). Each card keeps its own
+/// height, so a tall card never stretches the one beside it.
+class CardGrid extends StatelessWidget {
+  final List<Widget> cards;
+  final double spacing;
+  const CardGrid({required this.cards, this.spacing = 12, super.key});
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          // One card on its own takes the full width; two or more
+          // share the row when the window is wide enough.
+          final wide = constraints.maxWidth >= 860 && cards.length > 1;
+          final width = wide ? (constraints.maxWidth - spacing) / 2 : constraints.maxWidth;
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: cards.map((c) => SizedBox(width: width, child: c)).toList(),
+          );
+        },
+      );
+}
+
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;

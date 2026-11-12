@@ -66,6 +66,17 @@ abstract class BackendService {
   Future<String?> homesCurrent(String serial);
   Future<BackendResult> homesSet(String serial, String component);
   Future<BackendResult> homesOpenSettings(String serial);
+  Future<BackendResult> homesOpen(String serial, String component);
+  Future<BackendResult> homesOpenMeta(String serial);
+  Future<BackendResult> homesOpenSettingsScreen(String serial, String screen);
+  Future<List<HomeAppStatus>> homeAppsList(String serial);
+  Future<Map<String, dynamic>> homeAppDownload(String id);
+  Future<BackendResult> homeAppInstall(String serial, String id);
+  Future<BackendResult> homeAppUninstall(String serial, String id);
+  Future<BackendResult> homeAppOpen(String serial, String id);
+  Future<PathsInfo?> pathsGet();
+  Future<PathsInfo?> pathsSet({String? backupRoot, String? recordingsRoot});
+  Future<PathsInfo?> pathsReset();
   Future<SingularityPreflight?> singularityPreflight(String serial);
   Future<Map<String, dynamic>> singularityDownload();
   Future<BackendResult> singularityInstall(String serial);
@@ -486,6 +497,65 @@ class RealBackend implements BackendService {
   @override
   Future<BackendResult> homesOpenSettings(String serial) async =>
       _toResult(await _run(['homes', 'open-settings', '--serial', serial]));
+
+  @override
+  Future<BackendResult> homesOpen(String serial, String component) async =>
+      _toResult(await _run(['homes', 'open', '--serial', serial, '--component', component]));
+
+  @override
+  Future<BackendResult> homesOpenMeta(String serial) async =>
+      _toResult(await _run(['homes', 'open-meta', '--serial', serial]));
+
+  @override
+  Future<BackendResult> homesOpenSettingsScreen(String serial, String screen) async =>
+      _toResult(await _run(['homes', 'open-settings-screen', '--serial', serial, '--screen', screen]));
+
+  @override
+  Future<List<HomeAppStatus>> homeAppsList(String serial) async {
+    final j = await _run(['home-apps', 'list', '--serial', serial]);
+    final list = (j['home_apps'] as List?) ?? [];
+    return list.map((e) => HomeAppStatus.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> homeAppDownload(String id) async =>
+      await _run(['home-apps', 'download', '--id', id]);
+
+  @override
+  Future<BackendResult> homeAppInstall(String serial, String id) async =>
+      _toResult(await _run(['home-apps', 'install', '--serial', serial, '--id', id]));
+
+  @override
+  Future<BackendResult> homeAppUninstall(String serial, String id) async =>
+      _toResult(await _run(['home-apps', 'uninstall', '--serial', serial, '--id', id]));
+
+  @override
+  Future<BackendResult> homeAppOpen(String serial, String id) async =>
+      _toResult(await _run(['home-apps', 'open', '--serial', serial, '--id', id]));
+
+  @override
+  Future<PathsInfo?> pathsGet() async {
+    final j = await _run(['paths', 'get']);
+    if (j['ok'] != true) return null;
+    return PathsInfo.fromJson(j);
+  }
+
+  @override
+  Future<PathsInfo?> pathsSet({String? backupRoot, String? recordingsRoot}) async {
+    final args = ['paths', 'set'];
+    if (backupRoot != null) args.addAll(['--backup-root', backupRoot]);
+    if (recordingsRoot != null) args.addAll(['--recordings-root', recordingsRoot]);
+    final j = await _run(args);
+    if (j['ok'] != true) return null;
+    return PathsInfo.fromJson(j);
+  }
+
+  @override
+  Future<PathsInfo?> pathsReset() async {
+    final j = await _run(['paths', 'reset']);
+    if (j['ok'] != true) return null;
+    return PathsInfo.fromJson(j);
+  }
 
   @override
   Future<SingularityPreflight?> singularityPreflight(String serial) async {

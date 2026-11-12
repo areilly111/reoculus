@@ -198,11 +198,13 @@ fn homes_parsing() {
         Some("com.oculus.home/.HomeActivity".to_string())
     );
     assert_eq!(parse_resolve_activity(""), None);
-    // The system UI panels that answer the HOME intent are not
-    // homes, and neither is any dialog activity.
-    assert!(is_home_component("com.oculus.vrshell/.HomeActivity"));
+    // Only real launchers are listed. The stock home and the
+    // Settings fallback home are not launchers, and neither are
+    // the system UI panels or any dialog activity.
+    assert!(!is_home_component("com.oculus.vrshell/.HomeActivity"));
+    assert!(!is_home_component("com.android.settings/.FallbackHome"));
     assert!(is_home_component("com.threethan.launcher/com.threethan.LightningLauncher"));
-    assert!(is_home_component("com.android.settings/.FallbackHome"));
+    assert!(is_home_component("com.reoculus.home/.MainActivity"));
     assert!(!is_home_component(
         "com.oculus.systemux/com.oculus.panelapp.library.LibraryActivity"
     ));
