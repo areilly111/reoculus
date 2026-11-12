@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Compose the ReOculus banner from the REAL Quest 2 product photo.
 
-The photo Anthony uploaded (a web "transparent" PNG) has its checkerboard
-baked into the pixels, so clean_photo() strips it: exact white/gray pixels
-are flood-filled from the borders plus seeds inside the strap loop and
-under the headset, then the lavender glow left under the headset is
-removed. The headset pixels that remain are the real photo, no AI redraw.
-Source photo: workspace/user/media_library/image/png-transparent-oculus-quest-2-electronics-vr-headsets.png
+The hero photo is the real Quest 2 product shot Anthony uploaded,
+headset plus both controllers, with genuine transparency (no cleanup
+needed). An earlier photo had its checkerboard baked into the pixels;
+clean_photo() below strips that one if it is ever used again, but the
+current banner does not need it. The headset pixels are the real photo,
+no AI redraw.
+Source photo: workspace/user/media_library/image/Oculus-Quest-2-PNG-Image-HD.png
 Run: python3 scripts/make-banner.py  (writes assets/banner.png)
 """
 from collections import deque as _dq
@@ -67,9 +68,14 @@ BG_BOT = (7, 11, 20)
 CYAN = (56, 189, 248)
 CYAN_LT = (125, 211, 252)
 TITLE_C = (214, 243, 255)
-PHOTO = '/tmp/quest2-clean.png'
-SRC_PHOTO = '/home/hatch/workspace/user/media_library/image/png-transparent-oculus-quest-2-electronics-vr-headsets.png'
-clean_photo(SRC_PHOTO, PHOTO)
+SRC_PHOTO = '/home/hatch/workspace/user/media_library/image/Oculus-Quest-2-PNG-Image-HD.png'
+_old = '/home/hatch/workspace/user/media_library/image/png-transparent-oculus-quest-2-electronics-vr-headsets.png'
+# The HD shot has real transparency, use it as-is. A photo whose
+# "transparency" is a baked-in checkerboard goes through clean_photo().
+_check = Image.open(SRC_PHOTO).convert('RGBA')
+PHOTO = SRC_PHOTO if _check.split()[3].getextrema()[0] == 0 else '/tmp/quest2-clean.png'
+if PHOTO != SRC_PHOTO:
+    clean_photo(SRC_PHOTO, PHOTO)
 ROBOTO = '/home/hatch/workspace/flutter-sdk/bin/cache/artifacts/material_fonts/Roboto-{}.ttf'
 OUT = '/home/hatch/workspace/quest-companion/assets/banner.png'
 
@@ -111,20 +117,20 @@ trace([(1180, 200), (1120, 200), (1120, 260)])
 # soft cyan glow top-right, behind where the headset goes
 glow = Image.new('RGBA', (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
-gd.ellipse([720, -40, 1320, 480], fill=(34, 150, 220, 60))
+gd.ellipse([780, -60, 1330, 640], fill=(34, 150, 220, 60))
 glow = glow.filter(ImageFilter.GaussianBlur(90))
 overlay = Image.alpha_composite(overlay, glow)
 bg = Image.alpha_composite(bg.convert('RGBA'), overlay)
 
 # ---- the real headset, with a cyan rim glow -------------------------------
 hs = Image.open(PHOTO).convert('RGBA')
-hs = hs.resize((552, 275), Image.LANCZOS)  # smaller, with room to breathe
+hs = hs.resize((480, 600), Image.LANCZOS)  # tall shot: headset on top, controllers below
 mask = hs.split()[3]
 halo = Image.new('RGBA', hs.size, (0, 0, 0, 0))
 halo.putalpha(mask.filter(ImageFilter.GaussianBlur(14)))
 halo = ImageChops.multiply(halo, Image.new('RGBA', hs.size, (56, 189, 248, 170)))
-bg.alpha_composite(halo, (644, 180))
-bg.alpha_composite(hs, (648, 182))
+bg.alpha_composite(halo, (736, 16))
+bg.alpha_composite(hs, (740, 20))
 
 # ---- shield (preservation) -------------------------------------------------
 d = ImageDraw.Draw(bg)
