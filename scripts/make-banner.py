@@ -40,20 +40,21 @@ def clean_photo(src, out):
         for x in range(w):
             if seen[y][x]:
                 ap[x, y] = 0
-    # exact checker squares left under the headset (blocked by the glow)
-    for y in range(368, 459):
-        for x in range(280, 800):
+    # exact checker squares left under the headset (blocked by the glow),
+    # and the lavender glow itself: both only under the headset, where the
+    # headset body and strap never reach, so no real pixels are touched.
+    # (Both writes go to the same alpha image; the earlier version wrote the
+    # glow removal to the RGBA copy and then overwrote it with putalpha.)
+    for y in range(340, 459):
+        for x in range(280, 820):
             if px[x, y] in (WHITE, GRAY):
                 ap[x, y] = 0
-    # the lavender glow itself, also only under the headset
-    out_im = im.convert('RGBA')
-    opx = out_im.load()
-    for y in range(360, 459):
-        for x in range(280, 820):
-            r, g, b, a = opx[x, y]
-            if a > 0 and r > 185 and g > 185 and b > 185 and b >= r and (max(r, g, b) - min(r, g, b)) <= 40:
-                opx[x, y] = (r, g, b, 0)
+            else:
+                r, g, b = px[x, y]
+                if r > 185 and g > 185 and b > 185 and b >= r and (max(r, g, b) - min(r, g, b)) <= 40:
+                    ap[x, y] = 0
     alpha = alpha.filter(ImageFilter.GaussianBlur(0.8))
+    out_im = im.convert('RGBA')
     out_im.putalpha(alpha)
     out_im.save(out)
 
@@ -110,24 +111,24 @@ trace([(1180, 200), (1120, 200), (1120, 260)])
 # soft cyan glow top-right, behind where the headset goes
 glow = Image.new('RGBA', (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
-gd.ellipse([760, -160, 1340, 420], fill=(34, 150, 220, 60))
+gd.ellipse([720, -40, 1320, 480], fill=(34, 150, 220, 60))
 glow = glow.filter(ImageFilter.GaussianBlur(90))
 overlay = Image.alpha_composite(overlay, glow)
 bg = Image.alpha_composite(bg.convert('RGBA'), overlay)
 
 # ---- the real headset, with a cyan rim glow -------------------------------
 hs = Image.open(PHOTO).convert('RGBA')
-hs = hs.resize((644, 322), Image.LANCZOS)
+hs = hs.resize((552, 275), Image.LANCZOS)  # smaller, with room to breathe
 mask = hs.split()[3]
 halo = Image.new('RGBA', hs.size, (0, 0, 0, 0))
 halo.putalpha(mask.filter(ImageFilter.GaussianBlur(14)))
 halo = ImageChops.multiply(halo, Image.new('RGBA', hs.size, (56, 189, 248, 170)))
-bg.alpha_composite(halo, (596, 148))
-bg.alpha_composite(hs, (600, 150))
+bg.alpha_composite(halo, (644, 180))
+bg.alpha_composite(hs, (648, 182))
 
 # ---- shield (preservation) -------------------------------------------------
 d = ImageDraw.Draw(bg)
-cx, top = 690, 445
+cx, top = 110, 405  # left column, clear of the headset
 shield = [(cx - 40, top), (cx + 40, top), (cx + 40, top + 48),
           (cx, top + 92), (cx - 40, top + 48)]
 d.line(shield + [shield[0]], fill=CYAN, width=4, joint='curve')
