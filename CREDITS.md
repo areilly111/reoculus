@@ -1,6 +1,6 @@
 # Credits and third-party notices
 
-ReOculus's own code (formerly Quest Companion) (the Rust backend, the Flutter UI, the app
+ReOculus's own code (the Rust backend, the Flutter UI, the app
 itself) is MIT licensed, see `LICENSE`. This project stands on the work
 below. Nothing in this file changes the licence of any of those projects,
 and where a component is bundled with a release, its own licence travels
