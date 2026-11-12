@@ -130,9 +130,9 @@ pub fn is_transient_activity(component: &str) -> bool {
 /// The quality preset for this connection, re-read from the
 /// settings file each time so a quality change applies on the
 /// next auto-restart without stopping the mirror.
-fn preset_for(transport: &str, fallback: &str) -> String {
+fn preset_for(connection: &str, fallback: &str) -> String {
     let s = mirror_settings::get_mirror_settings();
-    match transport {
+    match connection {
         "wifi" => s.wifi_quality,
         "usb" => s.usb_quality,
         _ => fallback.to_string(),
@@ -154,13 +154,13 @@ fn cooldown_over(last_restart: Option<Instant>) -> bool {
 fn restart_mirror(
     t: &dyn AdbTransport,
     serial: &str,
-    transport: &str,
+    connection: &str,
     fallback_preset: &str,
     from: &str,
     to: &str,
     last_restart: &mut Option<Instant>,
 ) {
-    let preset = preset_for(transport, fallback_preset);
+    let preset = preset_for(connection, fallback_preset);
     let _ = media::stop_scrcpy(serial);
     match media::mirror(t, serial, &preset) {
         Ok(_) => log_line(&format!(
@@ -176,8 +176,8 @@ fn restart_mirror(
 /// The watcher loop. Runs in the foreground until SIGTERM (the
 /// default action ends the process; there is nothing to clean
 /// up). Never returns.
-pub fn run_watch(t: &dyn AdbTransport, serial: &str, preset: &str, transport: &str) -> ! {
-    log_line(&format!("watcher started for {serial} (preset {preset}, {transport})"));
+pub fn run_watch(t: &dyn AdbTransport, serial: &str, preset: &str, connection: &str) -> ! {
+    log_line(&format!("watcher started for {serial} (preset {preset}, {connection})"));
     let mut last: Option<String> = None;
     let mut last_restart: Option<Instant> = None;
     let mut pending = false;
@@ -195,7 +195,7 @@ pub fn run_watch(t: &dyn AdbTransport, serial: &str, preset: &str, transport: &s
                 last = Some(c.clone());
                 if changed {
                     if cooldown_over(last_restart) {
-                        restart_mirror(t, serial, transport, preset, &from, &c, &mut last_restart);
+                        restart_mirror(t, serial, connection, preset, &from, &c, &mut last_restart);
                         pending = false;
                     } else {
                         pending = true;
@@ -205,7 +205,7 @@ pub fn run_watch(t: &dyn AdbTransport, serial: &str, preset: &str, transport: &s
         }
         if pending && cooldown_over(last_restart) {
             let to = last.clone().unwrap_or_default();
-            restart_mirror(t, serial, transport, preset, "", &to, &mut last_restart);
+            restart_mirror(t, serial, connection, preset, "", &to, &mut last_restart);
             pending = false;
         }
         // scrcpy died on its own: bring it back, within the
@@ -213,7 +213,7 @@ pub fn run_watch(t: &dyn AdbTransport, serial: &str, preset: &str, transport: &s
         if !media::mirror_running(serial) {
             if cooldown_over(last_restart) {
                 let to = last.clone().unwrap_or_default();
-                restart_mirror(t, serial, transport, preset, "", &to, &mut last_restart);
+                restart_mirror(t, serial, connection, preset, "", &to, &mut last_restart);
                 pending = false;
             } else {
                 pending = true;
@@ -226,7 +226,7 @@ pub fn run_watch(t: &dyn AdbTransport, serial: &str, preset: &str, transport: &s
 /// Start the watcher detached (a `mirror-watch-run` process that
 /// outlives this call). Any watcher already running for this
 /// serial is stopped first, so starting twice leaves one.
-pub fn start_watch(serial: &str, preset: &str, transport: &str) -> Result<WatchStatus> {
+pub fn start_watch(serial: &str, preset: &str, connection: &str) -> Result<WatchStatus> {
     let _ = stop_watch(serial);
     let exe = std::env::current_exe().map_err(|e| Error(e.to_string()))?;
     let mut child = Command::new(exe)
@@ -237,8 +237,8 @@ pub fn start_watch(serial: &str, preset: &str, transport: &str) -> Result<WatchS
         .arg(serial)
         .arg("--preset")
         .arg(preset)
-        .arg("--transport")
-        .arg(transport)
+        .arg("--connection")
+        .arg(connection)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

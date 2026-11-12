@@ -10,7 +10,7 @@ Why? Meta is winding down Quest 2 support (last features in Horizon OS v2.13, Ma
 
 > Yes, I used AI to help design and code this. It works on my own Quest 2, every day. If it breaks for you, tell me and we will fix it.
 
-[⬇️ Download](#-download) · [✨ What it does](#-what-it-does) · [📸 Screenshots](#-screenshots) · [🚀 First run](#-first-run) · [🖥️ PC VR](#️-pc-vr) · [🔧 Build it yourself](#-build-it-yourself) · [🙅 What's not in here (yet)](#-whats-not-in-here-yet) · [📋 Status](#-status) · [⚖️ License and credits](#️-license-and-credits)
+[⬇️ Download](#-download) · [✨ What it does](#-what-it-does) · [📸 Screenshots](#-screenshots) · [🚀 First run](#-first-run) · [🖥️ PC VR](#️-pc-vr) · [🔧 Build it yourself](#-build-it-yourself) · [📋 Status](#-status) · [⚖️ License and credits](#️-license-and-credits)
 
 ![Linux](https://img.shields.io/badge/Linux-AppImage-blue) ![Android](https://img.shields.io/badge/Android-APK-green) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow) ![WiVRn](https://img.shields.io/badge/PC%20VR-WiVRn%2026.9-purple)
 
@@ -21,7 +21,7 @@ Why? Meta is winding down Quest 2 support (last features in Horizon OS v2.13, Ma
 | 📱 | **Apps** | List, search, launch, install (APK/APKS/XAPK), uninstall, force stop, clear data. Real icons and sizes, List or Tiles view. |
 | 💾 | **Backups** | Full app backup (APK + data when rooted), save-only backup, one-tap restore from the Library, with a dry run first so nothing surprises you. |
 | 📂 | **Files** | Browse the headset storage, upload, download, delete. |
-| 🪞 | **Mirror** | Live screen mirror over USB or Wi-Fi (scrcpy, quality picked automatically from the connection). Screenshot and on-device video recording. |
+| 🪞 | **Mirror** | Live screen mirror over USB or Wi-Fi (scrcpy, quality per connection, and it restarts itself when a game or the menu opens). Screenshot and on-device video recording. |
 | 🎛️ | **Device** | Battery, storage, firmware, controllers, refresh rate and performance settings. Rooted-only settings live in their own section, out of the way. |
 | 🖥️ | **PC VR** | WiVRn 26.9 wrapper: start/stop the server, encoder and codec picker, headset client version check. The server rides along inside the AppImage, and the headset app installs itself on first connect. |
 | 📚 | **Library** | One folder on your computer holds every backup and imported APK. |
@@ -151,15 +151,6 @@ flutter build apk --release
 ## 🤖 Android transport
 
 The APK today is the full UI, but headset features do not work on Android yet: there is no `questctl` binary to spawn there. The plan is to bundle `questctl` built for Android aarch64 and use the existing libadb DirectTransport over Wi-Fi. If you know that piece, contributions are very welcome.
-
-## 🙅 What's not in here (yet)
-
-A few things people usually ask about, so let us get them out of the way:
-
-- **No store.** There is no app catalogue and no downloading apps from inside ReOculus. A small curated catalogue plus an update check from GitHub Releases is on the list for later, once there is a proper library database to hang it on.
-- **No Beat Saber mods.** Looked into it, parked it. Research only for now.
-- **No update blocking by killing `com.oculus.updater`.** Tried it, Android said no, even as root. That package is protected and cannot be disabled, so the app does not pretend otherwise. If you want updates paused, Singularity's own OTA deferral in the headset is the safe way.
-- **No messing with your home.** It never writes home settings, never runs Singularity itself, and never touches a setting it cannot undo.
 
 ## 📋 Status
 

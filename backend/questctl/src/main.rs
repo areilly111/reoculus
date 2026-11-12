@@ -840,7 +840,7 @@ enum DeviceCmd {
         #[arg(long, default_value = "balanced")]
         preset: String,
         #[arg(long, default_value = "usb")]
-        transport: String,
+        connection: String,
     },
     /// The watcher loop itself (run detached by
     /// mirror-watch-start). Runs until killed.
@@ -850,7 +850,7 @@ enum DeviceCmd {
         #[arg(long, default_value = "balanced")]
         preset: String,
         #[arg(long, default_value = "usb")]
-        transport: String,
+        connection: String,
     },
     /// Stop the mirror watcher for this serial.
     MirrorWatchStop {
@@ -1466,12 +1466,12 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 let m = media::mirror(t.as_ref(), serial, preset)?;
                 Ok(json!({ "launched": true, "command": m.command, "note": m.note }))
             }
-            DeviceCmd::MirrorWatchStart { serial, preset, transport } => {
-                let s = mirror_watch::start_watch(serial, preset, transport)?;
+            DeviceCmd::MirrorWatchStart { serial, preset, connection } => {
+                let s = mirror_watch::start_watch(serial, preset, connection)?;
                 Ok(serde_json::to_value(s)?)
             }
-            DeviceCmd::MirrorWatchRun { serial, preset, transport } => {
-                mirror_watch::run_watch(t.as_ref(), serial, preset, transport);
+            DeviceCmd::MirrorWatchRun { serial, preset, connection } => {
+                mirror_watch::run_watch(t.as_ref(), serial, preset, connection);
             }
             DeviceCmd::MirrorWatchStop { serial } => {
                 let stopped = mirror_watch::stop_watch(serial)?;

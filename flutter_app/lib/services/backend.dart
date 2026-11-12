@@ -590,7 +590,7 @@ class RealBackend implements BackendService {
 
   @override
   Future<BackendResult> startMirrorWatch(String serial, String preset, String transport) async =>
-      _toResult(await _run(['device', 'mirror-watch-start', '--serial', serial, '--preset', preset, '--transport', transport]));
+      _toResult(await _run(['device', 'mirror-watch-start', '--serial', serial, '--preset', preset, '--connection', transport]));
 
   @override
   Future<BackendResult> stopMirrorWatch(String serial) async =>
