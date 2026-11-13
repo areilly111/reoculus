@@ -162,6 +162,8 @@ The APK today is the full UI, but headset features do not work on Android yet: t
 
 ## 📋 Status
 
+**0.2.24** (2026-11-12): Licensing and credits are done properly now, and the app says so plainly. CREDITS.md lists every dependency with its licence: all ten Rust crates, the Flutter packages, WiVRn GPLv3 with the exact v26.9 source tag, Frida, scrcpy, and the rest. Cargo.lock is tracked in git now so the exact dependency set is pinned, and the full GPLv3 text ships in the repo under licenses/. The AppImage carries LICENSE, CREDITS.md, and the GPLv3 text inside it, and the About page in the app now says use it at your own risk, I am not responsible for anything that happens.
+
 **0.2.23** (2026-11-12): The PC VR screen can add your own games and apps now, and it can change WiVRn's settings. PC Games/Apps is a new collapsible section: pick any executable with Browse and it shows in the WiVRn launcher on the headset, and it can be removed again from the same list. Open Saber, added this way, showed up in the headset and booted, so the Flatpak server does see entries in your home folder. WiVRn settings is another collapsible section: bitrate, picture quality, refresh rate, codec, bit depth, passthrough, foveated rendering and the rest are read from the headset's WiVRn settings file and written back over adb, and the server card now has bit depth and a TCP-only switch too. Also fixed: the server used to fail to start from the app because Flatpak expected a document-portal folder that did not exist yet, and the error blamed Avahi even when Avahi was running. The backend makes the folder first, and the Avahi hint only shows when the server really exits with code 4.
 
 **0.2.22** (2026-11-12): The auto-restart waits for the picture to settle now. It used to restart the moment the app in front changed, which sometimes landed while the menu was still opening or closing, so the new stream started mid-transition and smeared again. Now it only restarts once the app in front has been unchanged for a couple of seconds, and the gap between restarts is 5 seconds instead of 10, so the restart after closing the menu comes sooner. Restart mirror also waits 2 seconds after stopping before it starts again, for the same reason.
@@ -174,3 +176,9 @@ The APK today is the full UI, but headset features do not work on Android yet: t
 ## ⚖️ License and credits
 
 This project's own code is **MIT**. See [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md) for the full list: WiVRn (GPLv3, bundled server only), scrcpy (Apache 2.0), SideQuest (reference only, no code used), and the other projects this app is built on or learned from.
+
+## ⚠️ Use at your own risk
+
+ReOculus talks to your headset over ADB. It can change settings, install and remove apps, back up and delete files, and block updates. That is the whole point of it, and it is also why you should back up anything you care about before you let it loose.
+
+This software is provided as is, with no warranty of any kind. I am not responsible for anything that happens if you use it: a bricked headset, lost saves, a wiped install, an account problem, or anything else. If you are not comfortable with that, do not run it.

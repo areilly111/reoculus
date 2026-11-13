@@ -1,6 +1,8 @@
 # Rust
 target/
-Cargo.lock
+# NOTE: Cargo.lock is tracked on purpose. ReOculus is a binary, so the
+# exact dependency set is pinned in git for reproducible builds and so
+# the licence audit in CREDITS.md can point at it.
 # Flutter / Dart
 build/
 .dart_tool/
