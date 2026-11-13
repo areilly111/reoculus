@@ -54,7 +54,12 @@ abstract class BackendService {
   Future<Map<String, dynamic>> wivrnStatus();
   Future<BackendResult> wivrnStart();
   Future<BackendResult> wivrnStop();
-  Future<BackendResult> wivrnConfig(String encoder, String codec);
+  Future<BackendResult> wivrnConfig(String encoder, String codec, {int bitDepth = 10, bool tcpOnly = false});
+  Future<List<WivrnApp>> wivrnAppsList();
+  Future<BackendResult> wivrnAppsAdd(String name, String exec);
+  Future<BackendResult> wivrnAppsRemove(String file);
+  Future<WivrnClientSettings?> wivrnClientSettings(String serial);
+  Future<BackendResult> wivrnClientSettingsSet(String serial, WivrnClientSettings settings);
   Future<String?> wivrnHeadsetClient(String serial);
   Future<Map<String, dynamic>> wivrnSetupState(String serial);
   Future<BackendResult> wivrnInstallClient(String serial);
@@ -461,7 +466,52 @@ class RealBackend implements BackendService {
   @override
   Future<BackendResult> wivrnStop() async => _toResult(await _run(['wivrn', 'stop']));
   @override
-  Future<BackendResult> wivrnConfig(String encoder, String codec) async => _toResult(await _run(['wivrn', 'config', '--encoder', encoder, '--codec', codec]));
+  Future<BackendResult> wivrnConfig(String encoder, String codec, {int bitDepth = 10, bool tcpOnly = false}) async => _toResult(await _run(['wivrn', 'config', '--encoder', encoder, '--codec', codec, '--bit-depth', '$bitDepth', '--tcp-only', tcpOnly ? 'on' : 'off']));
+  @override
+  Future<List<WivrnApp>> wivrnAppsList() async {
+    final j = await _run(['wivrn', 'apps-list']);
+    final list = (j['apps'] as List?) ?? [];
+    return list.map((e) => WivrnApp.fromJson(e as Map<String, dynamic>)).toList();
+  }
+  @override
+  Future<BackendResult> wivrnAppsAdd(String name, String exec) async => _toResult(await _run(['wivrn', 'apps-add', '--name', name, '--exec', exec]));
+  @override
+  Future<BackendResult> wivrnAppsRemove(String file) async => _toResult(await _run(['wivrn', 'apps-remove', '--file', file]));
+  @override
+  Future<WivrnClientSettings?> wivrnClientSettings(String serial) async {
+    final j = await _run(['wivrn', 'client-settings', '--serial', serial]);
+    if (j['ok'] != true) return null;
+    return WivrnClientSettings.fromJson(j);
+  }
+  @override
+  Future<BackendResult> wivrnClientSettingsSet(String serial, WivrnClientSettings s) async => _toResult(await _run([
+        'wivrn',
+        'client-settings-set',
+        '--serial',
+        serial,
+        '--bitrate-mbps',
+        '${s.bitrateMbps}',
+        '--resolution-scale',
+        '${s.resolutionScale}',
+        '--refresh-rate',
+        '${s.preferredRefreshRate}',
+        '--codec',
+        s.codec,
+        '--bit-depth',
+        '${s.bitDepth}',
+        '--passthrough',
+        s.passthroughEnabled ? 'on' : 'off',
+        '--foveation',
+        s.overrideFoveationEnable ? 'on' : 'off',
+        '--high-power',
+        s.highPowerMode ? 'on' : 'off',
+        '--forward-keyboard',
+        s.forwardKeyboard ? 'on' : 'off',
+        '--forward-mouse',
+        s.forwardMouse ? 'on' : 'off',
+        '--forward-gamepad',
+        s.forwardGamepad ? 'on' : 'off',
+      ]));
   @override
   Future<String?> wivrnHeadsetClient(String serial) async {
     final j = await _run(['wivrn', 'headset-client', '--serial', serial]);

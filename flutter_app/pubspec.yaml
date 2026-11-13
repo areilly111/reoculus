@@ -1,7 +1,7 @@
 name: quest_companion
 description: "ReOculus - a clean, no-ads, no-account companion app for Meta Quest headsets. Linux desktop first, Android-ready."
 publish_to: "none"
-version: 0.2.22+24
+version: 0.2.23+25
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

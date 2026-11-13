@@ -61,6 +61,14 @@ Every screen, rendered from the app's own widget tests with Lorem Ipsum placehol
 
 ![PC VR screen](assets/screenshots/pc-vr.png)
 
+### PC VR games and apps
+
+![PC VR games and apps](assets/screenshots/pc-vr-games.png)
+
+### PC VR settings
+
+![PC VR settings](assets/screenshots/pc-vr-settings.png)
+
 ### Logs
 
 ![Logs screen](assets/screenshots/logs.png)
@@ -153,6 +161,8 @@ flutter build apk --release
 The APK today is the full UI, but headset features do not work on Android yet: there is no `questctl` binary to spawn there. The plan is to bundle `questctl` built for Android aarch64 and use the existing libadb DirectTransport over Wi-Fi. If you know that piece, contributions are very welcome.
 
 ## 📋 Status
+
+**0.2.23** (2026-11-12): The PC VR screen can add your own games and apps now, and it can change WiVRn's settings. PC Games/Apps is a new collapsible section: pick any executable with Browse and it shows in the WiVRn launcher on the headset, and it can be removed again from the same list. Open Saber, added this way, showed up in the headset and booted, so the Flatpak server does see entries in your home folder. WiVRn settings is another collapsible section: bitrate, picture quality, refresh rate, codec, bit depth, passthrough, foveated rendering and the rest are read from the headset's WiVRn settings file and written back over adb, and the server card now has bit depth and a TCP-only switch too. Also fixed: the server used to fail to start from the app because Flatpak expected a document-portal folder that did not exist yet, and the error blamed Avahi even when Avahi was running. The backend makes the folder first, and the Avahi hint only shows when the server really exits with code 4.
 
 **0.2.22** (2026-11-12): The auto-restart waits for the picture to settle now. It used to restart the moment the app in front changed, which sometimes landed while the menu was still opening or closing, so the new stream started mid-transition and smeared again. Now it only restarts once the app in front has been unchanged for a couple of seconds, and the gap between restarts is 5 seconds instead of 10, so the restart after closing the menu comes sooner. Restart mirror also waits 2 seconds after stopping before it starts again, for the same reason.
 **0.2.21** (2026-11-12): The mirror restarts itself now. When a game or the Quest menu opens, the picture used to smear and stall; a watcher on this computer checks which app is in front about once a second and restarts scrcpy when it changes, so the mirror comes back clean after a second or two of black. It is on by default and there is a switch on the Mirror screen to turn it off. It also brings the mirror back if scrcpy dies on its own, and it never restarts more than once every 10 seconds.

@@ -1,4 +1,6 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../models.dart';
 import '../services/app_state.dart';
 import '../widgets/common.dart';
 
@@ -19,7 +21,12 @@ class _PcVrScreenState extends State<PcVrScreen> {
   String? _clientVersion;
   String _encoder = 'nvenc';
   String _codec = 'h265';
+  int _bitDepth = 10;
+  bool _tcpOnly = false;
   bool _busy = false;
+  List<WivrnApp> _apps = [];
+  WivrnClientSettings? _clientSettings;
+  WivrnClientSettings? _edit;
 
   @override
   void initState() {
@@ -47,11 +54,23 @@ class _PcVrScreenState extends State<PcVrScreen> {
     if (dev != null) {
       cv = await widget.state.backend.wivrnHeadsetClient(dev.serial);
     }
+    final apps = await widget.state.backend.wivrnAppsList();
+    WivrnClientSettings? cs;
+    if (dev != null) {
+      cs = await widget.state.backend.wivrnClientSettings(dev.serial);
+    }
     if (mounted) {
       setState(() {
         _detect = d;
         _status = s;
         _clientVersion = cv;
+        _apps = apps;
+        _clientSettings = cs;
+        if (cs == null) {
+          _edit = null;
+        } else {
+          _edit ??= cs;
+        }
       });
     }
   }
@@ -64,6 +83,204 @@ class _PcVrScreenState extends State<PcVrScreen> {
       if (mounted) setState(() => _busy = false);
       await _refresh();
     }
+  }
+
+  /// Add a game or app: pick its executable with Browse, name it,
+  /// and the backend writes the WiVRn launcher entry for it.
+  Future<void> _addApp() async {
+    final nameCtrl = TextEditingController();
+    final pathCtrl = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Add game or app'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: nameCtrl, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Name (as it shows in the headset)')),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: TextField(controller: pathCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Executable file'))),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final picked = await FilePicker.platform.pickFiles();
+                final path = picked?.files.single.path;
+                if (path != null && path.isNotEmpty) {
+                  pathCtrl.text = path;
+                  if (nameCtrl.text.isEmpty) {
+                    nameCtrl.text = path.split('/').last.split('.').first;
+                  }
+                }
+              },
+              icon: const Icon(Icons.folder_open),
+              label: const Text('Browse'),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          const Text('Pick the game or app executable, for example a Linux binary or an AppImage. It shows in the WiVRn launcher on the headset.', style: TextStyle(fontSize: 13)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Add')),
+        ],
+      ),
+    );
+    if (result != true || !mounted) return;
+    final name = nameCtrl.text.trim();
+    final path = pathCtrl.text.trim();
+    if (name.isEmpty || path.isEmpty) {
+      showResult(context, false, 'Give the game a name and pick its file first.');
+      return;
+    }
+    await _act(() async {
+      final r = await widget.state.backend.wivrnAppsAdd(name, path);
+      if (mounted) showResult(context, r.ok, r.message);
+    });
+  }
+
+  Future<void> _removeApp(WivrnApp app) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Remove ${app.name}?'),
+        content: const Text('It will no longer show in the WiVRn launcher on the headset. The game itself stays on the computer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    await _act(() async {
+      final r = await widget.state.backend.wivrnAppsRemove(app.file);
+      if (mounted) showResult(context, r.ok, r.message);
+    });
+  }
+
+  Future<void> _saveClientSettings() async {
+    final dev = widget.state.selectedDevice;
+    final e = _edit;
+    if (dev == null || e == null) return;
+    await _act(() async {
+      final r = await widget.state.backend.wivrnClientSettingsSet(dev.serial, e);
+      if (mounted) {
+        showResult(context, r.ok, r.message);
+        if (r.ok) _edit = null; // reload fresh on refresh
+      }
+    });
+  }
+
+  Widget _dropRow<T>(String label, T value, List<DropdownMenuItem<T>> items, ValueChanged<T?> onChanged) {
+    return Row(children: [
+      SizedBox(width: 140, child: Text(label, style: const TextStyle(fontSize: 13))),
+      DropdownButton<T>(value: value, items: items, onChanged: _busy ? null : onChanged),
+    ]);
+  }
+
+  Widget _switchRow(String label, String sub, bool value, ValueChanged<bool> onChanged) {
+    return SwitchListTile(
+      title: Text(label, style: const TextStyle(fontSize: 13)),
+      subtitle: sub.isEmpty ? null : Text(sub, style: const TextStyle(fontSize: 12)),
+      value: value,
+      onChanged: _busy ? null : onChanged,
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+    );
+  }
+
+  /// The headset settings rows. The settings live on the headset
+  /// (client.json), so there is nothing to edit until one is
+  /// connected and WiVRn has saved its settings there once.
+  List<Widget> _settingsChildren() {
+    const pad = EdgeInsets.fromLTRB(16, 0, 16, 16);
+    final cs = _clientSettings;
+    if (cs == null) {
+      return const [
+        Padding(
+          padding: pad,
+          child: Text('Connect a headset to change its WiVRn settings. Bitrate, picture quality and the rest live on the headset, not on this computer.', style: TextStyle(fontSize: 13)),
+        ),
+      ];
+    }
+    if (!cs.available) {
+      return [
+        Padding(
+          padding: pad,
+          child: Text(cs.note, style: const TextStyle(fontSize: 13)),
+        ),
+      ];
+    }
+    final e = _edit ?? cs;
+    return [
+      Padding(
+        padding: pad,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Bitrate: ${e.bitrateMbps} Mbps', style: const TextStyle(fontSize: 13)),
+          Slider(
+            value: e.bitrateMbps.toDouble(),
+            min: 5,
+            max: 150,
+            divisions: 29,
+            label: '${e.bitrateMbps} Mbps',
+            onChanged: _busy ? null : (v) => setState(() => _edit = e.copyWith(bitrateMbps: v.round())),
+          ),
+          Text('Picture quality: ${e.resolutionScale.toStringAsFixed(1)}x', style: const TextStyle(fontSize: 13)),
+          Slider(
+            value: e.resolutionScale,
+            min: 0.5,
+            max: 2.0,
+            divisions: 15,
+            label: '${e.resolutionScale.toStringAsFixed(1)}x',
+            onChanged: _busy ? null : (v) => setState(() => _edit = e.copyWith(resolutionScale: v)),
+          ),
+          _dropRow<double>(
+            'Refresh rate',
+            e.preferredRefreshRate,
+            const [
+              DropdownMenuItem(value: 0, child: Text('Auto')),
+              DropdownMenuItem(value: 72, child: Text('72 Hz')),
+              DropdownMenuItem(value: 80, child: Text('80 Hz')),
+              DropdownMenuItem(value: 90, child: Text('90 Hz')),
+              DropdownMenuItem(value: 120, child: Text('120 Hz')),
+            ],
+            (v) => setState(() => _edit = e.copyWith(preferredRefreshRate: v ?? 0)),
+          ),
+          _dropRow<String>(
+            'Codec',
+            e.codec,
+            const [
+              DropdownMenuItem(value: 'auto', child: Text('Auto')),
+              DropdownMenuItem(value: 'h264', child: Text('H.264')),
+              DropdownMenuItem(value: 'h265', child: Text('H.265')),
+              DropdownMenuItem(value: 'av1', child: Text('AV1 (Quest 2 cannot decode it)')),
+            ],
+            (v) => setState(() => _edit = e.copyWith(codec: v ?? 'auto')),
+          ),
+          _dropRow<int>(
+            'Bit depth',
+            e.bitDepth,
+            const [
+              DropdownMenuItem(value: 8, child: Text('8-bit')),
+              DropdownMenuItem(value: 10, child: Text('10-bit')),
+            ],
+            (v) => setState(() => _edit = e.copyWith(bitDepth: v ?? 10)),
+          ),
+          _switchRow('Passthrough', 'See the room around you while in VR.', e.passthroughEnabled, (v) => setState(() => _edit = e.copyWith(passthroughEnabled: v))),
+          _switchRow('Foveated rendering', 'Sharp in the middle, softer at the edges. Saves speed.', e.overrideFoveationEnable, (v) => setState(() => _edit = e.copyWith(overrideFoveationEnable: v))),
+          _switchRow('High power mode', 'Lets the headset run hotter for steadier speed.', e.highPowerMode, (v) => setState(() => _edit = e.copyWith(highPowerMode: v))),
+          _switchRow('Forward keyboard', 'Send this computer keyboard into VR, if the server allows it.', e.forwardKeyboard, (v) => setState(() => _edit = e.copyWith(forwardKeyboard: v))),
+          _switchRow('Forward mouse', 'Send this computer mouse into VR, if the server allows it.', e.forwardMouse, (v) => setState(() => _edit = e.copyWith(forwardMouse: v))),
+          _switchRow('Forward gamepad', 'Send a gamepad on this computer into VR, if the server allows it.', e.forwardGamepad, (v) => setState(() => _edit = e.copyWith(forwardGamepad: v))),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _busy ? null : _saveClientSettings,
+            icon: const Icon(Icons.save),
+            label: const Text('Save headset settings'),
+          ),
+          const SizedBox(height: 8),
+          const Text('Takes effect next time you open WiVRn on the headset.', style: TextStyle(fontSize: 13)),
+        ]),
+      ),
+    ];
   }
 
   @override
@@ -163,13 +380,33 @@ class _PcVrScreenState extends State<PcVrScreen> {
                       onPressed: _busy || !installed
                           ? null
                           : () => _act(() async {
-                                final r = await widget.state.backend.wivrnConfig(_encoder, _codec);
+                                final r = await widget.state.backend.wivrnConfig(_encoder, _codec, bitDepth: _bitDepth, tcpOnly: _tcpOnly);
                                 if (mounted) showResult(context, r.ok, r.message);
                               }),
                       child: const Text('Save encoder'),
                     ),
                   ]),
                   const Text('H.265 first, H.264 fallback. The Quest 2 cannot decode AV1 and this PC cannot encode it. Bitrate and refresh rate are set in the WiVRn app on the headset, not here. Start at 72 Hz.', style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    const Text('Bit depth'),
+                    const SizedBox(width: 8),
+                    DropdownButton<int>(
+                      value: _bitDepth,
+                      items: const [
+                        DropdownMenuItem(value: 8, child: Text('8-bit')),
+                        DropdownMenuItem(value: 10, child: Text('10-bit')),
+                      ],
+                      onChanged: (v) => setState(() => _bitDepth = v ?? 10),
+                    ),
+                    const SizedBox(width: 16),
+                    const Text('TCP only'),
+                    Switch(
+                      value: _tcpOnly,
+                      onChanged: (v) => setState(() => _tcpOnly = v),
+                    ),
+                  ]),
+                  const Text('10-bit looks better on the Quest 2. TCP only helps on flaky Wi-Fi, at some cost to latency.', style: TextStyle(fontSize: 13)),
                   const SizedBox(height: 12),
                   Row(children: [
                     FilledButton.icon(
@@ -225,6 +462,46 @@ class _PcVrScreenState extends State<PcVrScreen> {
             ),
           ]),
           const SizedBox(height: 16),
+          Card(
+            child: ExpansionTile(
+              title: const Text('PC Games/Apps', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              subtitle: Text(_apps.isEmpty
+                  ? 'No games added yet. They show in the WiVRn launcher on the headset.'
+                  : '${_apps.length} ${_apps.length == 1 ? 'game' : 'games'} added. They show in the WiVRn launcher on the headset.'),
+              children: [
+                ..._apps.map((a) => ListTile(
+                      title: Text(a.name),
+                      subtitle: Text(a.exec, style: const TextStyle(fontSize: 12)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete),
+                        tooltip: 'Remove from the headset launcher',
+                        onPressed: _busy ? null : () => _removeApp(a),
+                      ),
+                    )),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('If a new game does not show up in the headset yet, restart the server.', style: TextStyle(fontSize: 13)),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: _busy ? null : _addApp,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add game or app'),
+                    ),
+                  ]),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: ExpansionTile(
+              title: const Text('WiVRn settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              subtitle: const Text('Bitrate, picture quality and more, on the headset and the server.'),
+              children: _settingsChildren(),
+            ),
+          ),
+          const SizedBox(height: 16),
           const SectionTitle('Server log'),
           if ((s?['log_tail'] as List?)?.isEmpty ?? true)
             const Text('No log yet. Start the server and its output shows here.', style: TextStyle(fontSize: 13))
@@ -241,7 +518,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
           const SizedBox(height: 16),
           const SectionTitle('First test'),
           const Text(
-            'Phase 0: with the headset connected, run hello_xr -G Vulkan on this PC. Coloured cubes in the headset, and head tracking moves the view, means streaming works. Do not start with a Steam game. Steam games come next, one at a time, with the launch option PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1 %command%.',
+            'Phase 0: with the headset connected, run hello_xr -G Vulkan on this PC. Coloured cubes in the headset, and head tracking moves the view, means streaming works. Add games below in PC Games/Apps. Steam games need the launch option PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1 %command% set in Steam.',
             style: TextStyle(fontSize: 13),
           ),
         ],

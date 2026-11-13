@@ -30,6 +30,8 @@ pub mod paths;
 pub mod settings;
 pub mod transport;
 pub mod wivrn;
+pub mod wivrn_apps;
+pub mod wivrn_settings;
 
 pub use error::{Error, Result};
 pub use transport::{AdbTransport, Device, Target, TransportKind};

@@ -318,6 +318,19 @@ class FakeBackend implements BackendService {
       });
     }
     if (name == #wivrnHeadsetClient) return Future<String?>.value('26.9');
+    if (name == #wivrnAppsList) {
+      return Future<List<WivrnApp>>.value(const [
+        WivrnApp(file: 'open-saber.desktop', name: 'Open Saber', exec: '/home/anthony/Downloads/OpenSaber.x86_64', icon: ''),
+      ]);
+    }
+    if (name == #wivrnAppsAdd) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Open Saber added to the headset launcher.'));
+    if (name == #wivrnAppsRemove) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Removed from the headset launcher.'));
+    if (name == #wivrnClientSettings) {
+      return Future<WivrnClientSettings?>.value(const WivrnClientSettings(
+        available: true, package: 'org.meumeu.wivrn', note: '', bitrateMbps: 50, resolutionScale: 1.2, preferredRefreshRate: 0, codec: 'auto', bitDepth: 10, passthroughEnabled: false, overrideFoveationEnable: false, highPowerMode: true, forwardKeyboard: false, forwardMouse: false, forwardGamepad: false,
+      ));
+    }
+    if (name == #wivrnClientSettingsSet) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Headset WiVRn settings saved.'));
     if (name == #setupWifi) return Future<WifiSetupResult?>.value(null);
     if (name == #wifiReconnect) return Future<List<String>>.value(const []);
     if (name == #debugInfo) {
@@ -454,6 +467,22 @@ void main() {
     final state = _state();
     await _pump(tester, state, PcVrScreen(state: state));
     await expectLater(find.byType(PcVrScreen), matchesGoldenFile('goldens/pc-vr.png'));
+  });
+
+  testWidgets('PC VR games and apps, expanded', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, PcVrScreen(state: state));
+    await tester.tap(find.text('PC Games/Apps'));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(PcVrScreen), matchesGoldenFile('goldens/pc-vr-games.png'));
+  });
+
+  testWidgets('PC VR settings, expanded', (WidgetTester tester) async {
+    final state = _state();
+    await _pump(tester, state, PcVrScreen(state: state));
+    await tester.tap(find.text('WiVRn settings'));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(PcVrScreen), matchesGoldenFile('goldens/pc-vr-settings.png'));
   });
 
   testWidgets('Logs screen', (WidgetTester tester) async {

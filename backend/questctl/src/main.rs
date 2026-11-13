@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn};
+use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -81,6 +81,50 @@ enum WivrnCmd {
         encoder: String,
         #[arg(long, default_value = "h265")]
         codec: String,
+        /// Server bit depth (8 or 10). Omitted: leave saved value.
+        #[arg(long)]
+        bit_depth: Option<u8>,
+        /// Server TCP-only mode (on/off). Omitted: leave saved value.
+        #[arg(long)]
+        tcp_only: Option<String>,
+    },
+    /// Read the headset's WiVRn client settings (client.json).
+    ClientSettings {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Write headset WiVRn client settings. Only the flags given
+    /// are changed; the rest keep their saved value.
+    ClientSettingsSet {
+        #[arg(long)]
+        serial: String,
+        /// Bitrate in Mbps (5-150).
+        #[arg(long)]
+        bitrate_mbps: Option<u32>,
+        /// Render scale (0.5-2.0).
+        #[arg(long)]
+        resolution_scale: Option<f32>,
+        /// Refresh rate: 0 (Auto), 72, 80, 90 or 120.
+        #[arg(long)]
+        refresh_rate: Option<f32>,
+        /// Codec: auto, h264, h265 or av1.
+        #[arg(long)]
+        codec: Option<String>,
+        /// Bit depth: 8 or 10.
+        #[arg(long)]
+        bit_depth: Option<u8>,
+        #[arg(long)]
+        passthrough: Option<String>,
+        #[arg(long)]
+        foveation: Option<String>,
+        #[arg(long)]
+        high_power: Option<String>,
+        #[arg(long)]
+        forward_keyboard: Option<String>,
+        #[arg(long)]
+        forward_mouse: Option<String>,
+        #[arg(long)]
+        forward_gamepad: Option<String>,
     },
     /// Installed WiVRn client version on the headset.
     HeadsetClient {
@@ -113,6 +157,21 @@ enum WivrnCmd {
     Undecline {
         #[arg(long)]
         serial: String,
+    },
+    /// List the custom PC games/apps added for the WiVRn launcher.
+    AppsList,
+    /// Add a custom PC game/app to the WiVRn launcher (writes a
+    /// .desktop file with X-WiVRn-VR).
+    AppsAdd {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        exec: String,
+    },
+    /// Remove a custom PC game/app from the WiVRn launcher.
+    AppsRemove {
+        #[arg(long)]
+        file: String,
     },
 }
 
@@ -1033,9 +1092,50 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             WivrnCmd::Status => Ok(serde_json::to_value(wivrn::status())?),
             WivrnCmd::Start => Ok(serde_json::to_value(wivrn::start()?)?),
             WivrnCmd::Stop => Ok(json!({ "message": wivrn::stop()? })),
-            WivrnCmd::Config { encoder, codec } => {
-                let path = wivrn::write_config(encoder, codec)?;
+            WivrnCmd::Config { encoder, codec, bit_depth, tcp_only } => {
+                let tcp = tcp_only
+                    .as_ref()
+                    .map(|s| wivrn_settings::parse_on_off(s))
+                    .transpose()?;
+                let path = wivrn::write_config(encoder, codec, *bit_depth, tcp)?;
                 Ok(json!({ "config": path, "encoder": encoder, "codec": codec }))
+            }
+            WivrnCmd::ClientSettings { serial } => {
+                Ok(serde_json::to_value(wivrn_settings::read_client_settings(t.as_ref(), serial)?)?)
+            }
+            WivrnCmd::ClientSettingsSet {
+                serial,
+                bitrate_mbps,
+                resolution_scale,
+                refresh_rate,
+                codec,
+                bit_depth,
+                passthrough,
+                foveation,
+                high_power,
+                forward_keyboard,
+                forward_mouse,
+                forward_gamepad,
+            } => {
+                let on_off = |s: &Option<String>| -> quest_core::Result<Option<bool>> {
+                    s.as_deref()
+                        .map(wivrn_settings::parse_on_off)
+                        .transpose()
+                };
+                let update = wivrn_settings::ClientSettingsUpdate {
+                    bitrate_mbps: *bitrate_mbps,
+                    resolution_scale: *resolution_scale,
+                    preferred_refresh_rate: *refresh_rate,
+                    codec: codec.clone(),
+                    bit_depth: *bit_depth,
+                    passthrough_enabled: on_off(passthrough)?,
+                    override_foveation_enable: on_off(foveation)?,
+                    high_power_mode: on_off(high_power)?,
+                    forward_keyboard: on_off(forward_keyboard)?,
+                    forward_mouse: on_off(forward_mouse)?,
+                    forward_gamepad: on_off(forward_gamepad)?,
+                };
+                Ok(json!({ "message": wivrn_settings::write_client_settings(t.as_ref(), serial, &update)? }))
             }
             WivrnCmd::HeadsetClient { serial } => {
                 let v = wivrn::headset_client_version(t.as_ref(), serial);
@@ -1047,6 +1147,15 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             WivrnCmd::InstallServer => Ok(json!({ "message": wivrn::install_server()? })),
             WivrnCmd::Decline { serial } => Ok(json!({ "message": wivrn::set_declined(true, serial)? })),
             WivrnCmd::Undecline { serial } => Ok(json!({ "message": wivrn::set_declined(false, serial)? })),
+            WivrnCmd::AppsList => Ok(json!({ "apps": wivrn_apps::list() })),
+            WivrnCmd::AppsAdd { name, exec } => {
+                let app = wivrn_apps::add(name, exec)?;
+                Ok(json!({
+                    "message": format!("{} added to the headset launcher. Restart the server if it does not show up yet.", app.name),
+                    "app": app,
+                }))
+            }
+            WivrnCmd::AppsRemove { file } => Ok(json!({ "message": wivrn_apps::remove(file)? })),
         },
         Commands::Homes(a) => match &a.cmd {
             HomesCmd::List { serial } => {

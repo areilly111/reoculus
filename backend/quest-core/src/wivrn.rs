@@ -195,7 +195,10 @@ pub fn read_config() -> Result<serde_json::Value> {
 /// Write the encoder/codec into the user config, preserving every
 /// other key (including pairing state in the same directory).
 /// Rejects unknown keys and the stale `encoders`/`bitrate`/`scale`.
-pub fn write_config(encoder: &str, codec: &str) -> Result<String> {
+/// bit_depth and tcp_only are optional: when given they are written
+/// as the top-level server keys `bit-depth` (8 or 10) and
+/// `tcp-only`; when omitted the saved values are left alone.
+pub fn write_config(encoder: &str, codec: &str, bit_depth: Option<u8>, tcp_only: Option<bool>) -> Result<String> {
     let allowed_encoders = ["vulkan", "nvenc", "vaapi", "x264"];
     let allowed_codecs = ["h264", "h265", "av1", "raw"];
     if !allowed_encoders.contains(&encoder) {
@@ -207,6 +210,11 @@ pub fn write_config(encoder: &str, codec: &str) -> Result<String> {
         return Err(Error(format!(
             "unknown codec '{codec}': use h264, h265, av1 or raw"
         )));
+    }
+    if let Some(d) = bit_depth {
+        if d != 8 && d != 10 {
+            return Err(Error("bit depth must be 8 or 10".into()));
+        }
     }
     let d = detect();
     let path = PathBuf::from(&d.config_path);
@@ -233,6 +241,12 @@ pub fn write_config(encoder: &str, codec: &str) -> Result<String> {
             "encoder".to_string(),
             serde_json::json!({"encoder": encoder, "codec": codec}),
         );
+        if let Some(d) = bit_depth {
+            obj.insert("bit-depth".to_string(), serde_json::json!(d));
+        }
+        if let Some(t) = tcp_only {
+            obj.insert("tcp-only".to_string(), serde_json::json!(t));
+        }
     }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -246,6 +260,21 @@ fn pid_file() -> PathBuf {
         .join(".config")
         .join("quest-companion")
         .join("wivrn.pid")
+}
+
+/// The document-portal per-app dir Flatpak's bwrap expects to
+/// bind-mount for the WiVRn server. `$XDG_RUNTIME_DIR` wins, with
+/// a `/run/user/<uid>` fallback for environments without it.
+fn doc_by_app_dir() -> Option<PathBuf> {
+    let runtime = std::env::var("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() })));
+    Some(
+        runtime
+            .join("doc")
+            .join("by-app")
+            .join(WIVRN_FLATPAK_ID),
+    )
 }
 
 fn log_file() -> PathBuf {
@@ -337,6 +366,16 @@ pub fn start() -> Result<WivrnStart> {
     if let Some(parent) = log.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // Flatpak trap (verified live 2026-11-12): bwrap fails with
+    // "Can't find source path /run/user/1000/doc/by-app/..." when
+    // the document-portal per-app dir does not exist yet, because
+    // WiVRn never opens a file through the portal. The dir lives
+    // on tmpfs, so it vanishes on reboot: create it every start.
+    if d.kind == "flatpak" {
+        if let Some(dir) = doc_by_app_dir() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+    }
     let log_f = std::fs::File::create(&log)?;
     let mut cmd: Command = if d.kind == "flatpak" {
         let mut c = Command::new("flatpak");
@@ -354,8 +393,17 @@ pub fn start() -> Result<WivrnStart> {
     let pid = child.id();
     std::thread::sleep(std::time::Duration::from_millis(1500));
     if let Ok(Some(code)) = child.try_wait() {
+        // The avahi hint only applies when the exit code really is
+        // 4; the old message printed it for every failure, which
+        // sent the 2026-11-12 report down the wrong path (avahi
+        // was running, the real cause was the missing doc dir).
+        let hint = if code.code() == Some(4) {
+            " Exit 4 means avahi-daemon is not running."
+        } else {
+            ""
+        };
         return Err(Error(format!(
-            "wivrn-server exited immediately (status {code}). Exit 4 means avahi-daemon is not running. See the log: {}",
+            "wivrn-server exited immediately (status {code}).{hint} See the log: {}",
             log.display()
         )));
     }

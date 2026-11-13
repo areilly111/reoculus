@@ -792,3 +792,90 @@ class MirrorSettings {
         autoRestart: j['auto_restart'] != false,
       );
 }
+
+class WivrnApp {
+  final String file, name, exec, icon;
+  const WivrnApp({required this.file, required this.name, required this.exec, required this.icon});
+  factory WivrnApp.fromJson(Map<String, dynamic> j) => WivrnApp(
+        file: (j['file'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        exec: (j['exec'] ?? '').toString(),
+        icon: (j['icon'] ?? '').toString(),
+      );
+}
+
+/// The headset's WiVRn client settings (client.json on the
+/// headset). Bitrate is in Mbps here; the backend converts to
+/// bitrate_bps. preferredRefreshRate 0 means Auto. codec "auto"
+/// means the key is absent.
+class WivrnClientSettings {
+  final bool available;
+  final String package, note, codec;
+  final int bitrateMbps, bitDepth;
+  final double resolutionScale, preferredRefreshRate;
+  final bool passthroughEnabled, overrideFoveationEnable, highPowerMode, forwardKeyboard, forwardMouse, forwardGamepad;
+  const WivrnClientSettings({
+    required this.available,
+    required this.package,
+    required this.note,
+    required this.bitrateMbps,
+    required this.resolutionScale,
+    required this.preferredRefreshRate,
+    required this.codec,
+    required this.bitDepth,
+    required this.passthroughEnabled,
+    required this.overrideFoveationEnable,
+    required this.highPowerMode,
+    required this.forwardKeyboard,
+    required this.forwardMouse,
+    required this.forwardGamepad,
+  });
+  factory WivrnClientSettings.fromJson(Map<String, dynamic> j) => WivrnClientSettings(
+        available: j['available'] == true,
+        package: (j['package'] ?? '').toString(),
+        note: (j['note'] ?? '').toString(),
+        bitrateMbps: (j['bitrate_mbps'] as num?)?.toInt() ?? 50,
+        resolutionScale: (j['resolution_scale'] as num?)?.toDouble() ?? 1.2,
+        preferredRefreshRate: (j['preferred_refresh_rate'] as num?)?.toDouble() ?? 0,
+        codec: (j['codec'] ?? 'auto').toString(),
+        bitDepth: (j['bit_depth'] as num?)?.toInt() ?? 10,
+        passthroughEnabled: j['passthrough_enabled'] == true,
+        overrideFoveationEnable: j['override_foveation_enable'] == true,
+        highPowerMode: j['high_power_mode'] != false,
+        forwardKeyboard: j['forward_keyboard'] == true,
+        forwardMouse: j['forward_mouse'] == true,
+        forwardGamepad: j['forward_gamepad'] == true,
+      );
+  WivrnClientSettings copyWith({
+    bool? available,
+    String? package,
+    String? note,
+    int? bitrateMbps,
+    double? resolutionScale,
+    double? preferredRefreshRate,
+    String? codec,
+    int? bitDepth,
+    bool? passthroughEnabled,
+    bool? overrideFoveationEnable,
+    bool? highPowerMode,
+    bool? forwardKeyboard,
+    bool? forwardMouse,
+    bool? forwardGamepad,
+  }) =>
+      WivrnClientSettings(
+        available: available ?? this.available,
+        package: package ?? this.package,
+        note: note ?? this.note,
+        bitrateMbps: bitrateMbps ?? this.bitrateMbps,
+        resolutionScale: resolutionScale ?? this.resolutionScale,
+        preferredRefreshRate: preferredRefreshRate ?? this.preferredRefreshRate,
+        codec: codec ?? this.codec,
+        bitDepth: bitDepth ?? this.bitDepth,
+        passthroughEnabled: passthroughEnabled ?? this.passthroughEnabled,
+        overrideFoveationEnable: overrideFoveationEnable ?? this.overrideFoveationEnable,
+        highPowerMode: highPowerMode ?? this.highPowerMode,
+        forwardKeyboard: forwardKeyboard ?? this.forwardKeyboard,
+        forwardMouse: forwardMouse ?? this.forwardMouse,
+        forwardGamepad: forwardGamepad ?? this.forwardGamepad,
+      );
+}

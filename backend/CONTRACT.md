@@ -427,6 +427,42 @@ recorded here with a date and a note in both agents' READMEs.
   `device mirror` does NOT stop an already-running mirror, it
   spawns a second one, so a restart must always stop first.
 
+- **2026-11-12 — WiVRn games, settings, and a server-start fix
+  (0.2.23).** New module `wivrn_apps.rs`: `wivrn apps-list`
+  scans `~/.local/share/applications` for .desktop files with
+  `X-WiVRn-VR` in Categories (the .desktop files are the source
+  of truth, no registry); `wivrn apps-add --name X --exec <path>`
+  writes `reoculus-<slug>.desktop` (numbered when the name is
+  taken), refuses spaced paths and missing files, and makes the
+  file executable first when it is not; `wivrn apps-remove
+  --file <name.desktop>` only deletes a WiVRn entry from that
+  dir. New module `wivrn_settings.rs`: `wivrn client-settings
+  --serial X` reads the headset's `client.json`
+  (`/data/data/<pkg>/files/client.json`, Store or GitHub
+  package) over adb with `su -c`; `wivrn client-settings-set
+  --serial X [--bitrate-mbps 5-150] [--resolution-scale 0.5-2.0]
+  [--refresh-rate 0|72|80|90|120] [--codec auto|h264|h265|av1]
+  [--bit-depth 8|10] [--passthrough|--foveation|--high-power|
+  --forward-keyboard|--forward-mouse|--forward-gamepad on|off]`
+  reads the file first so unknown keys (servers, theme) survive,
+  writes it back through a base64 pipe so the file keeps its
+  owner, verifies by reading it again, and force-stops the
+  client so the settings apply next time it opens (no
+  auto-relaunch: with autoconnect on that would start a session
+  unattended). `wivrn config` gains `--bit-depth 8|10` and
+  `--tcp-only on|off` (top-level server keys). Server-start fix:
+  `wivrn::start` creates the Flatpak document-portal dir
+  (`$XDG_RUNTIME_DIR/doc/by-app/io.github.wivrn.wivrn`) before
+  spawning the server, or bwrap fails because WiVRn never opens
+  a file through the portal; the immediate-exit error only
+  mentions avahi when the exit code really is 4. The PC VR
+  screen has a collapsible PC Games/Apps section (Browse to
+  pick the executable) and a collapsible WiVRn settings section
+  (headset settings plus the server bit depth and TCP-only
+  switch on the Server card). Client keys and file location
+  verified against the WiVRn 26.9 source; the live headset
+  read/write is still untested (headset adb was offline).
+
 ### Home apps (added 2026-11-12)
 
 | Command | Notes |
