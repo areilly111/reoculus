@@ -39,6 +39,20 @@ class AppState extends ChangeNotifier {
     SettingProfile(name: 'Smooth', refreshRate: 120, cpuLevel: 3, gpuLevel: 3, resolution: 'Default', guardianPaused: false),
     SettingProfile(name: 'Battery saver', refreshRate: 72, cpuLevel: 1, gpuLevel: 1, resolution: 'Lower', guardianPaused: false),
   ];
+
+  /// Profiles offered for one headset. Quest 1 tops out at 72 Hz, so
+  /// Smooth (120 Hz) is not offered there; Balanced runs at 72 Hz.
+  /// The backend clamps the matching built-in profile the same way,
+  /// so the name the UI sends always applies cleanly.
+  List<SettingProfile> profilesForHeadset(String headsetModel) {
+    if (headsetModel == 'quest1') {
+      return const [
+        SettingProfile(name: 'Balanced', refreshRate: 72, cpuLevel: 2, gpuLevel: 2, resolution: 'Default', guardianPaused: false),
+        SettingProfile(name: 'Battery saver', refreshRate: 72, cpuLevel: 1, gpuLevel: 1, resolution: 'Lower', guardianPaused: false),
+      ];
+    }
+    return profiles;
+  }
   String activeProfile = 'Balanced';
 
   /// Per-headset saved profile (serial -> profile name). A Quest 2

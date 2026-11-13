@@ -1662,14 +1662,14 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                     Ok(json!({ "profiles": names }))
                 }
                 ProfileCmd::Apply { serial, profile } => {
-                    let profiles = settings::load_profiles()?;
+                    let model = model_of(t.as_ref(), serial);
+                    let profiles = settings::profiles_for(&model)?;
                     let p = profiles.get(profile).ok_or_else(|| {
                         quest_core::Error(format!(
-                            "unknown profile '{profile}'. Available: {}",
+                            "unknown profile '{profile}' for this headset. Available: {}",
                             profiles.keys().cloned().collect::<Vec<_>>().join(", ")
                         ))
                     })?;
-                    let model = model_of(t.as_ref(), serial);
                     let applied = settings::apply_profile(t.as_ref(), serial, p, &model)?;
                     Ok(json!({
                         "profile": profile,

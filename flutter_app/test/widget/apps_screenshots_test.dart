@@ -27,6 +27,18 @@ const _device = QuestDevice(
   serial: 'TESTSERIAL000001',
   state: 'device',
   model: 'Quest 2',
+  headsetModel: 'quest2',
+  transport: 'usb',
+);
+
+// Quest 1 fake: model "Quest", final firmware build, no Singularity,
+// no Quest Home Switcher. Proves the Quest 1 gating in goldens.
+const _deviceQuest1 = QuestDevice(
+  serial: 'TESTSERIAL000001',
+  state: 'device',
+  model: 'Quest',
+  device: 'monterey',
+  headsetModel: 'quest1',
   transport: 'usb',
 );
 
@@ -37,6 +49,23 @@ const _deviceInfo = DeviceInfo(
   androidVersion: '14',
   resolution: '3664x1920',
   cpuAbi: 'arm64-v8a',
+  batteryLevel: 87,
+  batteryTempC: 31,
+  storageUsedGb: 86,
+  storageTotalGb: 112,
+  charging: true,
+);
+
+const _deviceInfoQuest1 = DeviceInfo(
+  model: 'Quest',
+  serial: 'TESTSERIAL000001',
+  firmware: '49845030443200410',
+  androidVersion: '10',
+  resolution: '2880x1600',
+  cpuAbi: 'arm64-v8a',
+  headsetModel: 'quest1',
+  supportsSingularity: false,
+  supportsHomeSwitcher: false,
   batteryLevel: 87,
   batteryTempC: 31,
   storageUsedGb: 86,
@@ -122,13 +151,16 @@ const _health = HealthInfo(
 /// error, so a screen change that needs a new backend call fails
 /// loudly here instead of silently rendering an empty screen.
 class FakeBackend implements BackendService {
+  final bool quest1;
+  const FakeBackend({this.quest1 = false});
+
   @override
   dynamic noSuchMethod(Invocation invocation) {
     final name = invocation.memberName;
     if (name == #listApps) return Future<List<QuestApp>>.value(_apps);
     if (name == #listLibrary) return Future<List<LibraryEntry>>.value(const []);
-    if (name == #listDevices) return Future<List<QuestDevice>>.value(const [_device]);
-    if (name == #deviceInfo) return Future<DeviceInfo?>.value(_deviceInfo);
+    if (name == #listDevices) return Future<List<QuestDevice>>.value([quest1 ? _deviceQuest1 : _device]);
+    if (name == #deviceInfo) return Future<DeviceInfo?>.value(quest1 ? _deviceInfoQuest1 : _deviceInfo);
     if (name == #appIcon) return Future<AppIcon?>.value(null);
     if (name == #label) return 'Fake backend';
     if (name == #scrcpyAvailable) return Future<bool>.value(false);
@@ -162,6 +194,19 @@ class FakeBackend implements BackendService {
     if (name == #homesOpenMeta) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Meta Home is open on the headset.'));
     if (name == #homesOpenSettingsScreen) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Settings screen is open on the headset.'));
     if (name == #homeAppsList) {
+      // Quest 1 only gets Lightning Launcher: Quest Home Switcher
+      // only lists Quest 2 / 3 / 3S.
+      if (quest1) {
+        return Future<List<HomeAppStatus>>.value(const [
+          HomeAppStatus(
+            id: 'lightning', name: 'Lightning Launcher', package: 'com.lorem.launcher',
+            detail: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+            source: 'GitHub releases (lorem/ipsum)', installed: true, updateAvailable: true,
+            downloaded: true, installedVersion: '10.0.0', latestVersion: '10.0.1',
+            file: '/tmp/LightningLauncher.apk', sha256: '0123456789abcdef0123456789abcdef', sizeBytes: 2814577,
+          ),
+        ]);
+      }
       return Future<List<HomeAppStatus>>.value(const [
         HomeAppStatus(
           id: 'lightning', name: 'Lightning Launcher', package: 'com.lorem.launcher',
@@ -404,13 +449,13 @@ Future<void> _pump(WidgetTester tester, AppState state, Widget screen) async {
   await tester.pumpAndSettle();
 }
 
-AppState _state() {
-  final state = AppState(backend: FakeBackend());
-  state.selectedDevice = _device;
-  state.devices = [_device];
+AppState _state({bool quest1 = false}) {
+  final state = AppState(backend: FakeBackend(quest1: quest1));
+  state.selectedDevice = quest1 ? _deviceQuest1 : _device;
+  state.devices = [quest1 ? _deviceQuest1 : _device];
   // Normally refreshDevices fills this in from the backend; the
   // golden pumps set the device directly, so set it here too.
-  state.deviceInfo = _deviceInfo;
+  state.deviceInfo = quest1 ? _deviceInfoQuest1 : _deviceInfo;
   state.log('Lorem ipsum dolor sit amet');
   state.log('Dolor sit amet, consectetur');
   state.log('Sed do eiusmod tempor');
@@ -430,6 +475,18 @@ void main() {
     final state = _state();
     await _pump(tester, state, DevicesScreen(state: state));
     await expectLater(find.byType(DevicesScreen), matchesGoldenFile('goldens/devices.png'));
+  });
+
+  testWidgets('Devices screen, Quest 1', (WidgetTester tester) async {
+    final state = _state(quest1: true);
+    await _pump(tester, state, DevicesScreen(state: state));
+    await expectLater(find.byType(DevicesScreen), matchesGoldenFile('goldens/devices-quest1.png'));
+  });
+
+  testWidgets('Device and Settings screen, Quest 1', (WidgetTester tester) async {
+    final state = _state(quest1: true);
+    await _pump(tester, state, DeviceSettingsScreen(state: state));
+    await expectLater(find.byType(DeviceSettingsScreen), matchesGoldenFile('goldens/device-settings-quest1.png'));
   });
 
   testWidgets('Apps screen, list view', (WidgetTester tester) async {

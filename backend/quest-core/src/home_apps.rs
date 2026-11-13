@@ -132,8 +132,14 @@ fn file_size(path: &PathBuf) -> u64 {
 /// per app: when the network is down the installed state still
 /// comes back, with no latest version and no update flag.
 pub fn list(t: &dyn AdbTransport, serial: &str) -> Result<Vec<HomeAppStatus>> {
+    // Quest Home Switcher only lists Quest 2 / 3 / 3S, so it is hidden
+    // on Quest 1. Lightning Launcher works on Quest 1 (sideloaded).
+    let quest1 = crate::devices::headset_of(t, serial).is_quest1();
     let mut out = Vec::new();
     for app in HOME_APPS {
+        if quest1 && app.id == "qhs" {
+            continue;
+        }
         let installed_ver = installed_version(t, serial, app.package);
         let installed = installed_ver.is_some();
         let file = cached_file(app)?;
@@ -260,6 +266,11 @@ pub fn download(id: &str) -> Result<HomeAppDownload> {
 /// install instructions ask for.
 pub fn install(t: &dyn AdbTransport, serial: &str, id: &str) -> Result<String> {
     let app = find_app(id)?;
+    if id == "qhs" && crate::devices::headset_of(t, serial).is_quest1() {
+        return Err(Error(
+            "Quest Home Switcher does not support Quest 1 (Quest 2 / 3 / 3S only).".into(),
+        ));
+    }
     let file = cached_file(app)?;
     if !file.exists() {
         download(id)?;

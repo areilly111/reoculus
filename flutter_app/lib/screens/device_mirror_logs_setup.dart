@@ -376,7 +376,9 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   }
 
   List<int> get _refreshRates {
-    final model = widget.state.deviceInfo?.model ?? '';
+    final info = widget.state.deviceInfo;
+    if (info?.isQuest1 == true) return [60, 72];
+    final model = info?.model ?? '';
     if (model.toLowerCase().contains('quest 2')) return [60, 72, 80, 90, 96, 120];
     return [60, 72, 80, 90, 96, 120, 144, 180, 207];
   }
@@ -392,7 +394,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Device and settings', style: Theme.of(context).textTheme.headlineSmall),
-          const Text('Safe settings are at the top. Anything that can break the headset is in the closed Dangerous section below. Rooted settings are in their own closed section, and only show up when this headset is rooted. Most of these settings reset when the headset restarts. Your saved profile is applied again each time you connect.'),
+          Text(info?.isQuest1 == true ? 'Safe settings are at the top. Anything that can break the headset is in the closed Dangerous section below. There are no rooted settings on a Quest 1: Singularity only supports Quest 2, Pro, 3, and 3S. Most of these settings reset when the headset restarts. Your saved profile is applied again each time you connect.' : 'Safe settings are at the top. Anything that can break the headset is in the closed Dangerous section below. Rooted settings are in their own closed section, and only show up when this headset is rooted. Most of these settings reset when the headset restarts. Your saved profile is applied again each time you connect.'),
           const SizedBox(height: 12),
           Card(
             clipBehavior: Clip.antiAlias,
@@ -403,7 +405,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                   : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('About this headset', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
-                      Text('Model: ${info.model}'),
+                      Text('Model: ${info.displayName}'),
+                      if (info.isQuest1) const Text('Singularity root features and Quest Home Switcher are not available on Quest 1.'),
                       Text('Serial: ${info.serial}'),
                       Text('Firmware: ${info.firmware}'),
                       Text('Android: ${info.androidVersion}'),
@@ -420,7 +423,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               subtitle: 'Pick one and it is applied now and again on every connect.',
               infoTitle: 'Saved profiles',
               infoBody: 'A profile is a saved set of screen speed, CPU and GPU level. Pick one and it is applied to the headset now, and again every time you connect it. The profile is saved on this computer, per headset.',
-              child: Wrap(spacing: 8, children: s.profiles.map((p) => ChoiceChip(
+              child: Wrap(spacing: 8, children: s.profilesForHeadset(info?.headsetModel ?? 'unknown').map((p) => ChoiceChip(
                 label: Text('${p.name} (${p.refreshRate} Hz)'),
                 selected: s.activeProfile == p.name,
                 onSelected: (_) async {
@@ -436,7 +439,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
             ),
             _sectionCard(
               title: 'Screen speed',
-              subtitle: 'Higher looks smoother but uses more battery. Quest 2 supports up to 120 Hz.',
+              subtitle: info?.isQuest1 == true ? 'Higher looks smoother but uses more battery. Quest 1 supports up to 72 Hz.' : info != null && info.model.toLowerCase().contains('quest 2') ? 'Higher looks smoother but uses more battery. Quest 2 supports up to 120 Hz.' : 'Higher looks smoother but uses more battery. Quest 3 supports up to 207 Hz.',
               child: DropdownButton<int>(
                 value: _refreshRates.contains(_refresh) ? _refresh : _refreshRates.last,
                 items: _refreshRates.map((v) => DropdownMenuItem(value: v, child: Text('$v Hz'))).toList(),
@@ -805,9 +808,17 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
             ),
           ]),
           const SizedBox(height: 16),
-          Card(
-            child: ExpansionTile(
-              title: Text(rooted ? 'Rooted settings' : 'Rooted settings (not rooted)', style: const TextStyle(fontWeight: FontWeight.bold)),
+          if (info != null && !info.supportsSingularity)
+            Card(
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Singularity is only for Quest 2, Pro, 3, and 3S, so there are no rooted settings on this Quest 1. Lightning Launcher in the Home apps section below still works, and so do backups, files, and mirror.'),
+              ),
+            )
+          else
+            Card(
+              child: ExpansionTile(
+                title: Text(rooted ? 'Rooted settings' : 'Rooted settings (not rooted)', style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(rooted ? 'Root is on this headset. These settings need root.' : 'This headset is not rooted, so these settings are hidden. Nothing here will root it for you.'),
               initiallyExpanded: false,
               children: [
@@ -927,58 +938,67 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                         icon: const Icon(Icons.refresh),
                         label: const Text('Restart home UI'),
                       ),
-                      const SizedBox(height: 16),
-                      Row(children: [
-                        const Expanded(child: Text('Home apps', style: TextStyle(fontWeight: FontWeight.bold))),
-                        InfoButton('Home apps', 'The two apps to use instead of a custom home. Lightning Launcher replaces the apps menu, Quest Home Switcher manages custom 3D home environments. The list is scanned from the headset, so it knows what is installed and whether an update is out. The APKs are downloaded from the authors\u2019 GitHub releases when you tap Download; nothing is bundled with ReOculus.'),
-                      ]),
-                      const SizedBox(height: 8),
-                      if (_homeAppsLoading)
-                        const Text('Checking the headset…')
-                      else if (_homeApps.isEmpty)
-                        const Text('Could not read the home apps. Tap Refresh below.')
-                      else
-                        ..._homeApps.map((a) => _homeAppRow(a)),
-                      OutlinedButton.icon(
-                        onPressed: () async => _loadHomeApps(),
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh home apps'),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(children: [
-                        const Expanded(child: Text('Quest Home Switcher', style: TextStyle(fontWeight: FontWeight.bold))),
-                        InfoButton('Quest Home Switcher', 'Quest Home Switcher manages custom 3D home environments: the official ones and about 250 community homes. The catalogue of homes lives inside the app itself, so browsing and viewing the homes happens on the headset, in Quest Home Switcher. The app is not open source; ReOculus only downloads its published release APK, never its code.'),
-                      ]),
-                      const SizedBox(height: 8),
-                      const Text('Browse and view custom homes inside Quest Home Switcher on the headset: it has the full catalogue (official + about 250 community homes) with search, sorting and previews. Download and apply a home there; ReOculus just installs and opens the app.', style: TextStyle(fontSize: 13)),
-                      const SizedBox(height: 8),
-                      Wrap(spacing: 8, runSpacing: 8, children: [
-                        FilledButton(
-                          onPressed: s.selectedDevice == null
-                              ? null
-                              : () async {
-                                  final r = await s.backend.homeAppOpen(s.selectedDevice!.serial, 'qhs');
-                                  if (mounted) showResult(context, r.ok, r.message);
-                                },
-                          child: const Text('Browse custom homes'),
-                        ),
-                        OutlinedButton(
-                          onPressed: s.selectedDevice == null
-                              ? null
-                              : () async {
-                                  final r = await s.backend.homeAppInstall(s.selectedDevice!.serial, 'qhs');
-                                  if (mounted) showResult(context, r.ok, r.message);
-                                  await _loadHomeApps();
-                                },
-                          child: const Text('Install Quest Home Switcher'),
-                        ),
-                      ]),
-                      const SizedBox(height: 8),
-                      const Text('Source: github.com/nikitat21/Quest-Home-Switcher', style: TextStyle(fontSize: 13)),
                     ]),
                   ),
                 ],
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const Expanded(child: Text('Home apps', style: TextStyle(fontWeight: FontWeight.bold))),
+                  InfoButton('Home apps', info?.isQuest1 == true ? 'Lightning Launcher replaces the apps menu on a Quest 1. Quest Home Switcher only lists Quest 2 / 3 / 3S, so it is not offered here. The list is scanned from the headset, so it knows what is installed and whether an update is out. The APK is downloaded from the author\u2019s GitHub release when you tap Download; nothing is bundled with ReOculus.' : 'The two apps to use instead of a custom home. Lightning Launcher replaces the apps menu, Quest Home Switcher manages custom 3D home environments. The list is scanned from the headset, so it knows what is installed and whether an update is out. The APKs are downloaded from the authors\u2019 GitHub releases when you tap Download; nothing is bundled with ReOculus.'),
+                ]),
+                const SizedBox(height: 8),
+                if (_homeAppsLoading)
+                  const Text('Checking the headset…')
+                else if (_homeApps.isEmpty)
+                  const Text('Could not read the home apps. Tap Refresh below.')
+                else
+                  ..._homeApps.map((a) => _homeAppRow(a)),
+                OutlinedButton.icon(
+                  onPressed: () async => _loadHomeApps(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh home apps'),
+                ),
+                if (info?.supportsHomeSwitcher == true) ...[
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    const Expanded(child: Text('Quest Home Switcher', style: TextStyle(fontWeight: FontWeight.bold))),
+                    InfoButton('Quest Home Switcher', 'Quest Home Switcher manages custom 3D home environments: the official ones and about 250 community homes. The catalogue of homes lives inside the app itself, so browsing and viewing the homes happens on the headset, in Quest Home Switcher. The app is not open source; ReOculus only downloads its published release APK, never its code.'),
+                  ]),
+                  const SizedBox(height: 8),
+                  const Text('Browse and view custom homes inside Quest Home Switcher on the headset: it has the full catalogue (official + about 250 community homes) with search, sorting and previews. Download and apply a home there; ReOculus just installs and opens the app.', style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    FilledButton(
+                      onPressed: s.selectedDevice == null
+                          ? null
+                          : () async {
+                              final r = await s.backend.homeAppOpen(s.selectedDevice!.serial, 'qhs');
+                              if (mounted) showResult(context, r.ok, r.message);
+                            },
+                      child: const Text('Browse custom homes'),
+                    ),
+                    OutlinedButton(
+                      onPressed: s.selectedDevice == null
+                          ? null
+                          : () async {
+                              final r = await s.backend.homeAppInstall(s.selectedDevice!.serial, 'qhs');
+                              if (mounted) showResult(context, r.ok, r.message);
+                              await _loadHomeApps();
+                            },
+                      child: const Text('Install Quest Home Switcher'),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  const Text('Source: github.com/nikitat21/Quest-Home-Switcher', style: TextStyle(fontSize: 13)),
+                ],
+              ]),
             ),
           ),
           const SizedBox(height: 12),
@@ -991,24 +1011,28 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    SwitchListTile(
-                      title: const Text('Experimental features'),
-                      subtitle: const Text('Turns on experimental Quest features. They can be unfinished and unstable.'),
-                      value: _experimental,
-                      onChanged: (v) async {
-                        setState(() => _experimental = v);
-                        await _apply('debug.oculus.experimentalEnabled', v ? '1' : '0', v ? 'Experimental features on.' : 'Experimental features off.');
-                      },
-                    ),
-                    SwitchListTile(
-                      title: const Text('Force display scaling'),
-                      subtitle: const Text('Needed for the highest screen speeds on Quest 3. Can make the picture look wrong on Quest 2.'),
-                      value: _scaling,
-                      onChanged: (v) async {
-                        setState(() => _scaling = v);
-                        await _apply('debug.oculus.forceDisplayScaling', v ? '1' : '0', v ? 'Display scaling forced on.' : 'Display scaling forced off.');
-                      },
-                    ),
+                    if (info?.isQuest1 == true)
+                      const Text('Experimental features and force display scaling are not available on Quest 1.')
+                    else ...[
+                      SwitchListTile(
+                        title: const Text('Experimental features'),
+                        subtitle: const Text('Turns on experimental Quest features. They can be unfinished and unstable.'),
+                        value: _experimental,
+                        onChanged: (v) async {
+                          setState(() => _experimental = v);
+                          await _apply('debug.oculus.experimentalEnabled', v ? '1' : '0', v ? 'Experimental features on.' : 'Experimental features off.');
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Force display scaling'),
+                        subtitle: const Text('Needed for the highest screen speeds on Quest 3. Can make the picture look wrong on Quest 2.'),
+                        value: _scaling,
+                        onChanged: (v) async {
+                          setState(() => _scaling = v);
+                          await _apply('debug.oculus.forceDisplayScaling', v ? '1' : '0', v ? 'Display scaling forced on.' : 'Display scaling forced off.');
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     const Text('Custom Quest setting', style: TextStyle(fontWeight: FontWeight.bold)),
                     const Text('For a debug.oculus.* key you already know exists on this firmware. Unknown keys are refused by the backend. This is the power-user option, and a wrong value can break an app until you restart the headset.', style: TextStyle(fontSize: 13)),
@@ -1824,7 +1848,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.24. A Quest 2 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
+                  const Text('ReOculus 0.2.25. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),

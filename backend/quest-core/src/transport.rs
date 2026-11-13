@@ -61,6 +61,11 @@ pub struct Device {
     pub state: DeviceState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Device codename from `adb devices -l` (`monterey`, `hollywood`, ...).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// Classified headset slug (`quest1`, `quest2`, ...).
+    pub headset_model: String,
     pub transport: String, // "usb" | "wifi"
 }
 
@@ -161,11 +166,21 @@ pub fn parse_devices_output(text: &str) -> Vec<Device> {
             (DeviceState::from(parts.get(1).copied().unwrap_or("unknown")), &parts[2..])
         };
         let mut model = None;
+        let mut device = None;
         for kv in rest {
             if let Some(m) = kv.strip_prefix("model:") {
                 model = Some(m.replace('_', " "));
             }
+            if let Some(d) = kv.strip_prefix("device:") {
+                device = Some(d.to_string());
+            }
         }
+        let headset_model = crate::headset::classify(
+            model.as_deref().unwrap_or(""),
+            device.as_deref().unwrap_or(""),
+        )
+        .slug()
+        .to_string();
         // Wi-Fi devices show as ip:port serials.
         let transport = if serial.contains(':') && serial.split(':').next().map_or(false, |h| h.chars().next().map_or(false, |c| c.is_ascii_digit())) {
             "wifi".to_string()
@@ -176,6 +191,8 @@ pub fn parse_devices_output(text: &str) -> Vec<Device> {
             serial,
             state,
             model,
+            device,
+            headset_model,
             transport,
         });
     }
@@ -724,5 +741,29 @@ pub fn make_transport(kind: &TransportKind) -> Result<Box<dyn AdbTransport>> {
     match kind {
         TransportKind::Binary => Ok(Box::new(AdbBinaryTransport::new()?)),
         TransportKind::Direct => Ok(Box::new(DirectTransport)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_devices_quest1() {
+        let text = "List of devices attached\n1WMHHB630X0001\tdevice product:monterey model:Quest device:monterey transport_id:1\n";
+        let devices = parse_devices_output(text);
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].model.as_deref(), Some("Quest"));
+        assert_eq!(devices[0].device.as_deref(), Some("monterey"));
+        assert_eq!(devices[0].headset_model, "quest1");
+    }
+
+    #[test]
+    fn parse_devices_quest2() {
+        let text = "List of devices attached\n1WMHHB630X1464\tdevice product:hollywood model:Quest_2 device:hollywood transport_id:2\n";
+        let devices = parse_devices_output(text);
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].model.as_deref(), Some("Quest 2"));
+        assert_eq!(devices[0].headset_model, "quest2");
     }
 }

@@ -63,11 +63,11 @@ class HelpScreen extends StatelessWidget {
           ),
           _Guide(
             title: 'Using your Quest on Linux',
-            body: 'This app is the way to use a Quest 2 on Linux: manage it, back it up, keep it alive after Meta support ends, and use it on a Linux PC for desktop and PC VR, with no Windows and no Meta account needed. The pieces that do that are the ones in this app: management, backup, library, gallery, terminal, rooted mode, auto-wireless, and the Android Wi-Fi app. Later phases add home and dock switching, a Singularity install wizard, WiVRn management now, our own Linux-only PC VR streamer later, and a desktop-in-VR view where it fits.',
+            body: 'This app is the way to use a Quest 2 or a Quest 1 on Linux: manage it, back it up, keep it alive after Meta support ends, and use it on a Linux PC for desktop and PC VR, with no Windows and no Meta account needed. The pieces that do that are the ones in this app: management, backup, library, gallery, terminal, rooted mode, auto-wireless, and the Android Wi-Fi app. Later phases add home and dock switching, a Singularity install wizard, WiVRn management now, our own Linux-only PC VR streamer later, and a desktop-in-VR view where it fits.',
           ),
         ]),
         const SizedBox(height: 16),
-        const Text('ReOculus: a Quest 2 companion for Linux and Android, offline and local-only.', style: TextStyle(fontSize: 13)),
+        const Text('ReOculus: a Quest 2 and Quest 1 companion for Linux and Android, offline and local-only.', style: TextStyle(fontSize: 13)),
       ]),
     );
   }

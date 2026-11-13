@@ -3,22 +3,50 @@
 // This app is Real mode only: there is no demo data anywhere.
 // Quest 2 is the first-class target; features are labelled by model
 // where they differ. Everything is local/offline: no account, no ads.
+// `headsetModel` is the backend-classified slug (quest1, quest2,
+// quest3, quest3s, questpro, unknown); use headsetDisplayName for
+// the name shown to the user, it falls back to the raw model.
+String headsetDisplayName(String headsetModel, String model) {
+  switch (headsetModel) {
+    case 'quest1':
+      return 'Quest 1';
+    case 'quest2':
+      return 'Quest 2';
+    case 'quest3':
+      return 'Quest 3';
+    case 'quest3s':
+      return 'Quest 3S';
+    case 'questpro':
+      return 'Quest Pro';
+    default:
+      return model.isEmpty ? 'Unknown headset' : model;
+  }
+}
+
 class QuestDevice {
   final String serial;
   final String state; // device | unauthorized | offline
   final String model;
+  final String device; // codename (monterey, hollywood, ...), may be empty
+  final String headsetModel; // quest1, quest2, ... unknown
   final String transport; // usb | wifi
-  const QuestDevice({required this.serial, required this.state, required this.model, required this.transport});
+  const QuestDevice({required this.serial, required this.state, required this.model, this.device = '', this.headsetModel = 'unknown', required this.transport});
+  String get displayName => headsetDisplayName(headsetModel, model);
   factory QuestDevice.fromJson(Map<String, dynamic> j) => QuestDevice(
         serial: (j['serial'] ?? '').toString(),
         state: (j['state'] ?? 'offline').toString(),
         model: (j['model'] ?? 'Quest').toString(),
+        device: (j['device'] ?? '').toString(),
+        headsetModel: (j['headset_model'] ?? 'unknown').toString(),
         transport: (j['transport'] ?? 'usb').toString(),
       );
 }
 
 class DeviceInfo {
   final String model, serial, firmware, androidVersion, resolution, cpuAbi;
+  final String headsetModel; // quest1, quest2, ... unknown
+  final bool supportsSingularity; // false on Quest 1
+  final bool supportsHomeSwitcher; // false on Quest 1
   final int batteryLevel, batteryTempC, storageUsedGb, storageTotalGb;
   final bool charging;
   const DeviceInfo({
@@ -28,12 +56,17 @@ class DeviceInfo {
     required this.androidVersion,
     required this.resolution,
     required this.cpuAbi,
+    this.headsetModel = 'unknown',
+    this.supportsSingularity = true,
+    this.supportsHomeSwitcher = true,
     required this.batteryLevel,
     required this.batteryTempC,
     required this.storageUsedGb,
     required this.storageTotalGb,
     required this.charging,
   });
+  String get displayName => headsetDisplayName(headsetModel, model);
+  bool get isQuest1 => headsetModel == 'quest1';
 }
 
 int? _optInt(dynamic v) => v is num ? v.toInt() : null;

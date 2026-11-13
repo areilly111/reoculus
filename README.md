@@ -2,9 +2,9 @@
 
 ![ReOculus banner](assets/banner.png)
 
-**Your Quest 2, on Linux, without the nonsense. No ads. No account. No telemetry. Nothing leaves your computer.**
+**Your Quest 2 or Quest 1, on Linux, without the nonsense. No ads. No account. No telemetry. Nothing leaves your computer.**
 
-ReOculus is a companion app for the Meta Quest 2 (and 3) that replaces the Meta PC app and SideQuest for everyday stuff: manage your apps, back them up, poke around the files, mirror the screen, and run PC VR on Linux with WiVRn. All over USB or Wi-Fi.
+ReOculus is a companion app for the Meta Quest 2, Quest 1 (and 3) that replaces the Meta PC app and SideQuest for everyday stuff: manage your apps, back them up, poke around the files, mirror the screen, and run PC VR on Linux with WiVRn. All over USB or Wi-Fi.
 
 Why? Meta is winding down Quest 2 support (last features in Horizon OS v2.13, March 2027, security patches until December 2027). This is my way of keeping the old headset useful on Linux long after that.
 
@@ -161,6 +161,8 @@ flutter build apk --release
 The APK today is the full UI, but headset features do not work on Android yet: there is no `questctl` binary to spawn there. The plan is to bundle `questctl` built for Android aarch64 and use the existing libadb DirectTransport over Wi-Fi. If you know that piece, contributions are very welcome.
 
 ## 📋 Status
+
+**0.2.25** (2026-11-13): Quest 1 support, because people on Reddit asked for it. The app now tells you which headset is connected (Quest 1 is codename monterey, Quest 2 is hollywood) and shows it by name on the Home, Devices, and Device and Settings screens. On a Quest 1, Singularity and Quest Home Switcher are hidden: Singularity only supports Quest 2, Pro, 3, and 3S, and Quest Home Switcher only lists Quest 2 / 3 / 3S. Everything else works: Lightning Launcher, WiVRn, apps, files, backups, mirror, and settings, with the refresh rate capped at 72 Hz and the mirror using h264 instead of h265. The Home apps card moved out of the Rooted section so it shows without root. One caveat: no literal Quest 1 getprop dump is published anywhere, so the monterey / Quest strings are inferred from the Quest 2/3 pattern and still need confirming on a real Quest 1.
 
 **0.2.24** (2026-11-12): Licensing and credits are done properly now, and the app says so plainly. CREDITS.md lists every dependency with its licence: all ten Rust crates, the Flutter packages, WiVRn GPLv3 with the exact v26.9 source tag, Frida, scrcpy, and the rest. Cargo.lock is tracked in git now so the exact dependency set is pinned, and the full GPLv3 text ships in the repo under licenses/. The AppImage carries LICENSE, CREDITS.md, and the GPLv3 text inside it, and the About page in the app now says use it at your own risk, I am not responsible for anything that happens.
 

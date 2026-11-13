@@ -137,12 +137,19 @@ pub fn mirror(t: &dyn AdbTransport, serial: &str, preset: &str) -> Result<Mirror
             "device {serial} is not visible to adb; connect it over USB or Wi-Fi first"
         )));
     }
+    // Quest 1 tops out at 72 Hz and its encoder is only verified for
+    // h264 (scrcpy's own default); every other headset gets h265.
+    let codec = if crate::devices::headset_of(t, serial).is_quest1() {
+        "h264"
+    } else {
+        "h265"
+    };
     let mut cmd = Command::new(&scrcpy);
     cmd.arg("-s").arg(serial)
         .arg("--max-size").arg(max_size)
         .arg("--video-bit-rate").arg(bit_rate)
         .arg("--max-fps").arg(max_fps)
-        .arg("--video-codec").arg("h265")
+        .arg("--video-codec").arg(codec)
         .arg("--video-codec-options").arg("i-frame-interval=1")
         .arg("--video-buffer").arg("100")
         .arg("--no-audio");
@@ -163,7 +170,7 @@ pub fn mirror(t: &dyn AdbTransport, serial: &str, preset: &str) -> Result<Mirror
     }
     let _ = child.id(); // detached; the window owns the process now.
     Ok(Mirror {
-        command: format!("{} -s {} --max-size {} --video-bit-rate {} --max-fps {} --video-codec h265 --video-codec-options i-frame-interval=1 --video-buffer 100 --no-audio", scrcpy.display(), serial, max_size, bit_rate, max_fps),
+        command: format!("{} -s {} --max-size {} --video-bit-rate {} --max-fps {} --video-codec {} --video-codec-options i-frame-interval=1 --video-buffer 100 --no-audio", scrcpy.display(), serial, max_size, bit_rate, max_fps, codec),
         scrcpy,
         note: "scrcpy is running in its own window. Close that window to stop mirroring."
             .into(),

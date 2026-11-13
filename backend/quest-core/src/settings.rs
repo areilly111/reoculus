@@ -13,29 +13,37 @@ use std::collections::HashMap;
 
 /// Keys the UI may offer per model. Quest 2 supports up to 120 Hz;
 /// Quest 3 / 3S up to 207 Hz supported, 240 Hz experimental with
-/// forceDisplayScaling.
+/// forceDisplayScaling. Quest 1 tops out at 72 Hz and never had
+/// forceDisplayScaling (Quest 3 only) or the experimental toggle
+/// (Quest 2 wording), so both are hidden there.
 pub fn allowed_keys(model: &str) -> &'static [&'static str] {
-    let _ = model;
-    &[
-        "debug.oculus.refreshRate",
-        "debug.oculus.cpuLevel",
-        "debug.oculus.gpuLevel",
-        "debug.oculus.guardian_pause",
-        "debug.oculus.fullRateCapture",
-        "debug.oculus.textureWidth",
-        "debug.oculus.textureHeight",
-        "debug.oculus.forceDisplayScaling",
-        "debug.oculus.experimentalEnabled",
-    ]
+    if crate::headset::classify(model, "").is_quest1() {
+        &[
+            "debug.oculus.refreshRate",
+            "debug.oculus.cpuLevel",
+            "debug.oculus.gpuLevel",
+            "debug.oculus.guardian_pause",
+            "debug.oculus.fullRateCapture",
+            "debug.oculus.textureWidth",
+            "debug.oculus.textureHeight",
+        ]
+    } else {
+        &[
+            "debug.oculus.refreshRate",
+            "debug.oculus.cpuLevel",
+            "debug.oculus.gpuLevel",
+            "debug.oculus.guardian_pause",
+            "debug.oculus.fullRateCapture",
+            "debug.oculus.textureWidth",
+            "debug.oculus.textureHeight",
+            "debug.oculus.forceDisplayScaling",
+            "debug.oculus.experimentalEnabled",
+        ]
+    }
 }
 
 pub fn max_refresh_rate(model: &str) -> u32 {
-    let m = model.to_lowercase();
-    if m.contains("quest 3") {
-        207
-    } else {
-        120
-    }
+    crate::headset::classify(model, "").max_refresh_rate()
 }
 
 pub fn is_quest_key(key: &str) -> bool {
@@ -217,6 +225,24 @@ pub fn load_profiles() -> Result<HashMap<String, Profile>> {
     Ok(map)
 }
 
+/// Profiles for one headset model. Quest 1 drops high-refresh (it
+/// only exists to push 120 Hz) and clamps every refresh rate to
+/// 72 Hz, so applying a profile on a Quest 1 never fails the cap.
+pub fn profiles_for(model: &str) -> Result<HashMap<String, Profile>> {
+    let mut map = load_profiles()?;
+    if crate::headset::classify(model, "").is_quest1() {
+        map.remove("high-refresh");
+        for p in map.values_mut() {
+            if let Some(r) = p.refresh_rate {
+                if r > 72 {
+                    p.refresh_rate = Some(72);
+                }
+            }
+        }
+    }
+    Ok(map)
+}
+
 pub fn save_profile(profile: &Profile) -> Result<()> {
     let path = profiles_path()?;
     let mut map: HashMap<String, Profile> = HashMap::new();
@@ -279,4 +305,36 @@ pub fn apply_profile(
         set("debug.oculus.fullRateCapture", v.to_string())?;
     }
     Ok(AppliedProfile { applied, warnings })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quest1_caps_at_72() {
+        assert_eq!(max_refresh_rate("Quest"), 72);
+        assert_eq!(max_refresh_rate("Quest 2"), 120);
+        assert_eq!(max_refresh_rate("Quest 3"), 207);
+    }
+
+    #[test]
+    fn quest1_hides_quest3_only_keys() {
+        let keys = allowed_keys("Quest");
+        assert!(!keys.contains(&"debug.oculus.forceDisplayScaling"));
+        assert!(!keys.contains(&"debug.oculus.experimentalEnabled"));
+        assert!(keys.contains(&"debug.oculus.refreshRate"));
+        assert!(allowed_keys("Quest 2").contains(&"debug.oculus.forceDisplayScaling"));
+    }
+
+    #[test]
+    fn profiles_for_quest1_clamps_and_drops_high_refresh() {
+        let map = profiles_for("Quest").unwrap();
+        assert!(!map.contains_key("high-refresh"));
+        assert_eq!(map["balanced"].refresh_rate, Some(72));
+        assert_eq!(map["battery-saver"].refresh_rate, Some(72));
+        let map2 = profiles_for("Quest 2").unwrap();
+        assert!(map2.contains_key("high-refresh"));
+        assert_eq!(map2["balanced"].refresh_rate, Some(90));
+    }
 }

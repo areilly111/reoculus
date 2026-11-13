@@ -148,6 +148,10 @@ pub fn device_backup(
     let info = device_info(t, serial).unwrap_or_else(|_| crate::devices::DeviceInfo {
         serial: serial.to_string(),
         model: None,
+        device: None,
+        headset_model: "unknown".to_string(),
+        supports_singularity: true,
+        supports_home_switcher: true,
         android_version: None,
         firmware: None,
         cpu_abi: None,

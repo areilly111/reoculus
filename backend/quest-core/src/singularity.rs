@@ -288,6 +288,15 @@ pub fn cached_apk() -> Option<PathBuf> {
 }
 
 pub fn install(t: &dyn AdbTransport, serial: &str) -> Result<String> {
+    // Singularity only supports Quest 2, Pro, 3, and 3S (its own
+    // README). The wizard's preflight already refuses other models,
+    // but install must refuse on its own too: it is called directly
+    // and must never put the root app on a Quest 1.
+    if crate::devices::headset_of(t, serial).is_quest1() {
+        return Err(Error(
+            "Singularity does not support Quest 1. It supports Quest 2, Pro, 3, and 3S.".into(),
+        ));
+    }
     let apk = cached_apk().ok_or_else(|| {
         Error("no downloaded Singularity APK found. Download it first (step 3 of the wizard).".into())
     })?;

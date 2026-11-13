@@ -32,6 +32,14 @@ pub struct StorageInfo {
 pub struct DeviceInfo {
     pub serial: String,
     pub model: Option<String>,
+    /// Device codename from `ro.product.device` (`monterey`, `hollywood`, ...).
+    pub device: Option<String>,
+    /// Classified headset (`quest1`, `quest2`, `quest3`, `quest3s`, `questpro`, `unknown`).
+    pub headset_model: String,
+    /// False on Quest 1: Singularity only supports Quest 2, Pro, 3, 3S.
+    pub supports_singularity: bool,
+    /// False on Quest 1: Quest Home Switcher only lists Quest 2 / 3 / 3S.
+    pub supports_home_switcher: bool,
     pub android_version: Option<String>,
     pub firmware: Option<String>,
     pub cpu_abi: Option<String>,
@@ -39,6 +47,21 @@ pub struct DeviceInfo {
     pub storage: StorageInfo,
     pub resolution: Option<String>,
     pub density: Option<i32>,
+}
+
+/// Light headset classification: one `getprop` dump, no battery/df/wm
+/// calls. Used where only the model matters (mirror codec, home apps,
+/// Singularity install gate).
+pub fn headset_of(t: &dyn AdbTransport, serial: &str) -> crate::headset::Headset {
+    let target = Target::serial(serial);
+    let props = match t.shell(&target, "getprop") {
+        Ok(o) => parse_getprop(&o.stdout),
+        Err(_) => HashMap::new(),
+    };
+    crate::headset::classify(
+        props.get("ro.product.model").map(|s| s.as_str()).unwrap_or(""),
+        props.get("ro.product.device").map(|s| s.as_str()).unwrap_or(""),
+    )
 }
 
 /// Parse `getprop` output: lines like `[ro.product.model]: [Quest 3]`.
@@ -163,9 +186,17 @@ pub fn device_info(t: &dyn AdbTransport, serial: &str) -> Result<DeviceInfo> {
     let storage = parse_df(&t.shell(&target, "df /sdcard")?.stdout);
     let resolution = parse_wm_size(&t.shell(&target, "wm size")?.stdout);
     let density = parse_wm_density(&t.shell(&target, "wm density")?.stdout);
+    let headset = crate::headset::classify(
+        props.get("ro.product.model").map(|s| s.as_str()).unwrap_or(""),
+        props.get("ro.product.device").map(|s| s.as_str()).unwrap_or(""),
+    );
     Ok(DeviceInfo {
         serial: serial.to_string(),
         model: props.get("ro.product.model").cloned(),
+        device: props.get("ro.product.device").cloned(),
+        headset_model: headset.slug().to_string(),
+        supports_singularity: headset.supports_singularity(),
+        supports_home_switcher: headset.supports_home_switcher(),
         android_version: props.get("ro.build.version.release").cloned(),
         firmware: props.get("ro.build.version.incremental").cloned(),
         cpu_abi: props.get("ro.product.cpu.abi").cloned(),

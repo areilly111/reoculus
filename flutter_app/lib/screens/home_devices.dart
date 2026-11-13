@@ -194,7 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const EmptyState(
                         icon: Icons.headset_off,
                         title: 'No headset connected',
-                        body: 'Nothing here is sample data. Connect your Quest 2 over USB or Wi-Fi to see it here.',
+                        body: 'Nothing here is sample data. Connect your Quest over USB or Wi-Fi to see it here.',
                       ),
                       const SizedBox(height: 8),
                       Wrap(spacing: 12, children: [
@@ -208,7 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const Icon(Icons.headset, size: 40),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(dev.model, style: Theme.of(context).textTheme.titleLarge),
+                          Text(dev.displayName, style: Theme.of(context).textTheme.titleLarge),
                           Text('${dev.serial}  •  ${dev.transport == 'wifi' ? 'Wi-Fi' : 'USB'}', style: Theme.of(context).textTheme.bodySmall),
                         ])),
                         Chip(
@@ -238,6 +238,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (s.controllers != null && s.controllers!.names.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         Text('Controllers: ${s.controllers!.names.join(', ')}'),
+                      ],
+                      if (info != null && info.isQuest1) ...[
+                        const SizedBox(height: 12),
+                        const Text('Quest 1: Singularity root features and Quest Home Switcher are not available on this headset. Everything else works the same.'),
                       ],
                     ]),
             ),
@@ -416,7 +420,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 return Card(
                   child: ListTile(
                     leading: Icon(d.transport == 'wifi' ? Icons.wifi : Icons.usb, size: 32),
-                    title: Text('${d.model}  •  ${d.transport == 'wifi' ? 'Wi-Fi' : 'USB'}'),
+                    title: Text('${d.displayName}  •  ${d.transport == 'wifi' ? 'Wi-Fi' : 'USB'}'),
                     subtitle: Text(subtitle),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       Chip(

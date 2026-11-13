@@ -11,6 +11,7 @@ pub mod battery_history;
 pub mod device_backup;
 pub mod devices;
 pub mod gallery;
+pub mod headset;
 pub mod health;
 pub mod home_apps;
 pub mod homes;
