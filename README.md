@@ -162,6 +162,8 @@ The APK now works on Android over Wi-Fi: it bundles the `questctl` binary built 
 
 ## 📋 Status
 
+**0.2.29** (2026-11-14): SteamVR + Steam Link is a second PC VR runtime, experimental and opt-in per headset. The PC VR screen has a runtime picker now: WiVRn stays the default, and picking SteamVR shows a readiness check first (native vs Flatpak Steam, SteamVR version 2.18 or newer, NVIDIA driver 575.64.05 or newer, whether WiVRn is in the way), each problem with its fix. Starting SteamVR stops WiVRn first and snapshots the shared runtime config, restored when SteamVR stops. ReOculus only starts SteamVR through Steam, it never installs, bundles, or changes it, and you connect with the free Steam Link app on the headset. Heads up: Steam Link on this PC's GTX 1050 Ti is untested, video may fail to start, and the screen says so. SteamVR is not installed on this PC yet, so the first thing the screen will tell you is to install it in Steam.
+
 **0.2.28** (2026-11-13): The About card on Device and settings was one long stacked list in a tall empty card. The info is spread out across the card now: Headset, Display, Battery, Storage, and Processor sit side by side, 3 across on a wide window, 2 on a medium one, 1 on a narrow one. This build also has the 0.2.27 fix, the rename pencil on a headset's card sits next to the name now instead of at the far right edge.
 
 **0.2.27** (2026-11-13): Built but never sent out, superseded by 0.2.28 before delivery. The pencil to rename a headset on the Headsets card used to sit at the far right edge of the card, away from the name. It is next to the name now, right where you would look for it.

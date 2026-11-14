@@ -170,7 +170,10 @@ class FakeBackend implements BackendService {
   /// The same headset twice (USB + Wi-Fi): proves the Home screen
   /// folds the two entries into one card.
   final bool twoDevices;
-  const FakeBackend({this.quest1 = false, this.twoDevices = false});
+  /// The PC VR runtime choice is SteamVR, so the PC VR golden
+  /// shows the SteamVR section instead of the WiVRn one.
+  final bool steamvr;
+  const FakeBackend({this.quest1 = false, this.twoDevices = false, this.steamvr = false});
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
@@ -414,6 +417,26 @@ class FakeBackend implements BackendService {
       ));
     }
     if (name == #wivrnClientSettingsSet) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Headset WiVRn settings saved.'));
+    if (name == #steamvrDetect) {
+      return Future<Map<String, dynamic>>.value({
+        'steam_kind': 'native', 'steam_path': '/home/lorem/.local/share/Steam',
+        'steamvr_present': true, 'steamvr_dir': '/home/lorem/.local/share/Steam/steamapps/common/SteamVR',
+        'steamvr_version': '2.18.0', 'steamvr_branch': 'stable', 'version_ok': true,
+        'gpu_name': 'NVIDIA GeForce GTX 1050 Ti', 'nvidia_driver': '580.178.04', 'nvidia_ok': true,
+        'driver_mismatch': false, 'wivrn_running': false, 'active_runtime_is_wivrn': false,
+        'ready': true, 'issues': const [],
+        'note': 'SteamVR looks ready. Start it, then open Steam Link on the headset and connect to this PC. This PC has a GTX 1050 Ti, and Steam Link on that card is untested: if video fails to start (errors 405/499), switch back to WiVRn.',
+      });
+    }
+    if (name == #steamvrStatus) {
+      return Future<Map<String, dynamic>>.value({
+        'running': false, 'wivrn_running': false, 'active_runtime_is_wivrn': false,
+      });
+    }
+    if (name == #steamvrChoice) return Future<String>.value(steamvr ? 'steamvr' : 'wivrn');
+    if (name == #steamvrStart) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'SteamVR is running. Open Steam Link on the headset and connect to this PC.'));
+    if (name == #steamvrStop) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'SteamVR stopped. Runtime config restored.'));
+    if (name == #steamvrSetChoice) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'SteamVR + Steam Link is now the PC VR runtime for this headset (experimental).'));
     if (name == #setupWifi) return Future<WifiSetupResult?>.value(null);
     if (name == #wifiReconnect) return Future<List<String>>.value(const []);
     if (name == #debugInfo) {
@@ -487,8 +510,8 @@ Future<void> _pump(WidgetTester tester, AppState state, Widget screen) async {
   await tester.pumpAndSettle();
 }
 
-AppState _state({bool quest1 = false, bool twoDevices = false}) {
-  final state = AppState(backend: FakeBackend(quest1: quest1, twoDevices: twoDevices));
+AppState _state({bool quest1 = false, bool twoDevices = false, bool steamvr = false}) {
+  final state = AppState(backend: FakeBackend(quest1: quest1, twoDevices: twoDevices, steamvr: steamvr));
   state.selectedDevice = quest1 ? _deviceQuest1 : _device;
   state.devices = twoDevices ? [_device, _deviceWifi] : [quest1 ? _deviceQuest1 : _device];
   // Normally refreshDevices fills this in from the backend; the
@@ -565,6 +588,12 @@ void main() {
     final state = _state();
     await _pump(tester, state, PcVrScreen(state: state));
     await expectLater(find.byType(PcVrScreen), matchesGoldenFile('goldens/pc-vr.png'));
+  });
+
+  testWidgets('PC VR screen, SteamVR runtime', (WidgetTester tester) async {
+    final state = _state(steamvr: true);
+    await _pump(tester, state, PcVrScreen(state: state));
+    await expectLater(find.byType(PcVrScreen), matchesGoldenFile('goldens/pc-vr-steamvr.png'));
   });
 
   testWidgets('PC VR games and apps, expanded', (WidgetTester tester) async {

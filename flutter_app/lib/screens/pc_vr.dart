@@ -31,6 +31,10 @@ class _PcVrScreenState extends State<PcVrScreen> {
   List<WivrnApp> _apps = [];
   WivrnClientSettings? _clientSettings;
   WivrnClientSettings? _edit;
+  // SteamVR + Steam Link (experimental second runtime).
+  Map<String, dynamic>? _steamvrDetect;
+  Map<String, dynamic>? _steamvrStatus;
+  String _runtime = 'wivrn';
 
   @override
   /// Loads detection, server status, headset client version, games, and
@@ -53,14 +57,19 @@ class _PcVrScreenState extends State<PcVrScreen> {
   }
 
   /// Reloads WiVRn detection, server status, the headset client version,
-  /// the game list, and the headset settings.
+  /// the game list, and the headset settings. Also loads the SteamVR
+  /// readiness check and this headset's runtime choice.
   Future<void> _refresh() async {
     final d = await widget.state.backend.wivrnDetect();
     final s = await widget.state.backend.wivrnStatus();
+    final sd = await widget.state.backend.steamvrDetect();
+    final ss = await widget.state.backend.steamvrStatus();
     String? cv;
+    String runtime = 'wivrn';
     final dev = widget.state.selectedDevice;
     if (dev != null) {
       cv = await widget.state.backend.wivrnHeadsetClient(dev.serial);
+      runtime = await widget.state.backend.steamvrChoice(dev.serial);
     }
     final apps = await widget.state.backend.wivrnAppsList();
     WivrnClientSettings? cs;
@@ -71,6 +80,9 @@ class _PcVrScreenState extends State<PcVrScreen> {
       setState(() {
         _detect = d;
         _status = s;
+        _steamvrDetect = sd;
+        _steamvrStatus = ss;
+        _runtime = runtime;
         _clientVersion = cv;
         _apps = apps;
         _clientSettings = cs;
@@ -81,6 +93,21 @@ class _PcVrScreenState extends State<PcVrScreen> {
         }
       });
     }
+  }
+
+  /// Switches the PC VR runtime for the selected headset. Only
+  /// records the choice; starting and stopping the runtimes is
+  /// done from their own sections below.
+  Future<void> _setRuntime(String runtime) async {
+    final dev = widget.state.selectedDevice;
+    if (dev == null) return;
+    setState(() => _busy = true);
+    final r = await widget.state.backend.steamvrSetChoice(dev.serial, runtime);
+    if (mounted) {
+      showResult(context, r.ok, r.message);
+      setState(() => _busy = false);
+    }
+    await _refresh();
   }
 
   /// Runs a server action (start, stop, add, remove, save) with the busy
@@ -299,6 +326,91 @@ class _PcVrScreenState extends State<PcVrScreen> {
     ];
   }
 
+  /// The SteamVR + Steam Link section: readiness chips, the fix
+  /// list, start/stop, and the prompt to open Steam Link on the
+  /// headset once SteamVR is running.
+  Widget _steamvrSection() {
+    final sd = _steamvrDetect;
+    final ss = _steamvrStatus;
+    final running = ss?['running'] == true;
+    final ready = sd?['ready'] == true;
+    final issues = (sd?['issues'] as List?) ?? [];
+    final version = (sd?['steamvr_version'] ?? '').toString();
+    final branch = (sd?['steamvr_branch'] ?? '').toString();
+    final driver = (sd?['nvidia_driver'] ?? '').toString();
+    final kind = (sd?['steam_kind'] ?? '').toString();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('SteamVR + Steam Link (experimental)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const SizedBox(height: 8),
+          const Text("ReOculus starts SteamVR on this computer. You connect with the free Steam Link app on the headset. SteamVR is Valve's own runtime: it comes from Steam, ReOculus never installs or changes it.", style: TextStyle(fontSize: 13)),
+          const SizedBox(height: 12),
+          if (sd == null)
+            const Text('Checking SteamVR...')
+          else ...[
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              Chip(label: Text(kind == 'native' ? 'Native Steam' : kind == 'flatpak' ? 'Flatpak Steam' : 'Steam not found')),
+              Chip(label: Text(sd['steamvr_present'] == true ? 'SteamVR $version ($branch)' : 'SteamVR not installed')),
+              Chip(label: Text(driver.isEmpty ? 'NVIDIA driver unknown' : 'NVIDIA $driver')),
+              if (sd['wivrn_running'] == true) const Chip(label: Text('WiVRn running')),
+              if (running) const Chip(label: Text('SteamVR running')),
+            ]),
+            const SizedBox(height: 8),
+            if (issues.isNotEmpty) ...[
+              for (final issue in issues)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.warning_amber, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(issue.toString(), style: const TextStyle(fontSize: 13))),
+                  ]),
+                ),
+              const SizedBox(height: 4),
+            ],
+            Text(sd['note']?.toString() ?? '', style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 12),
+            if (running) ...[
+              const Text('SteamVR is running. Open Steam Link on the Quest and connect to this PC.', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+            ],
+            Row(children: [
+              FilledButton.icon(
+                onPressed: _busy || !ready || running
+                    ? null
+                    : () => _act(() async {
+                          final r = await widget.state.backend.steamvrStart();
+                          if (mounted) showResult(context, r.ok, r.message);
+                        }),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Start SteamVR'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _busy || !running
+                    ? null
+                    : () => _act(() async {
+                          final r = await widget.state.backend.steamvrStop();
+                          if (mounted) showResult(context, r.ok, r.message);
+                        }),
+                icon: const Icon(Icons.stop),
+                label: const Text('Stop SteamVR'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : () => _act(() async {}),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
+            ]),
+          ],
+        ]),
+      ),
+    );
+  }
+
   @override
   /// Builds the PC VR page: server status chips, encoder, headset,
   /// games, settings, log, and first test.
@@ -312,10 +424,39 @@ class _PcVrScreenState extends State<PcVrScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const SectionTitleWithInfo('PC VR (WiVRn)', infoTitle: 'PC VR (WiVRn)', infoBody: 'WiVRn streams PC VR games from this computer to the headset, over Wi-Fi or USB. The server on this computer and the WiVRn app on the headset must be the same version (26.9). This screen starts and stops the server and picks the video encoder. The games themselves run on the PC, the headset just shows them.'),
+        const SectionTitleWithInfo('PC VR', infoTitle: 'PC VR', infoBody: 'PC VR streams games from this computer to the headset, over Wi-Fi or USB. WiVRn 26.9 is the default runtime: the server on this computer and the WiVRn app on the headset must be the same version (26.9). SteamVR + Steam Link is an experimental second runtime: ReOculus starts SteamVR on this computer and you connect with the free Steam Link app on the headset. The games themselves run on the PC, the headset just shows them.'),
         const Text(
-          'Streams PC VR games from this computer to your Quest 2 over Wi-Fi or USB, using WiVRn 26.9. Linux only, no Windows, no SteamVR. The server and the WiVRn app on the headset must be the same version.',
+          'Streams PC VR games from this computer to your Quest 2 over Wi-Fi or USB. WiVRn 26.9 is the default runtime. SteamVR + Steam Link is an experimental second runtime: ReOculus starts SteamVR, you connect with the Steam Link app on the headset.',
           style: TextStyle(fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('PC VR runtime', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 4),
+              const Text('Which runtime streams PC VR to this headset. WiVRn is the default. SteamVR + Steam Link is experimental and saved per headset.', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, children: [
+                ChoiceChip(
+                  label: const Text('WiVRn (default)'),
+                  selected: _runtime != 'steamvr',
+                  onSelected: _busy ? null : (v) { if (v) _setRuntime('wivrn'); },
+                ),
+                ChoiceChip(
+                  label: const Text('SteamVR + Steam Link (experimental)'),
+                  selected: _runtime == 'steamvr',
+                  onSelected: _busy ? null : (v) { if (v) _setRuntime('steamvr'); },
+                ),
+              ]),
+              if (widget.state.selectedDevice == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('Connect a headset first: the runtime choice is saved per headset.', style: TextStyle(fontSize: 13)),
+                ),
+            ]),
+          ),
         ),
         const SizedBox(height: 12),
         // Refused or not installed yet: the whole section is
@@ -323,7 +464,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
         // The "not installed" branch needs a finished check:
         // before the check runs, a null client version means
         // "not checked yet", and the check retried on failure.
-        if (d != null && (widget.state.wivrnDeclined || (widget.state.wivrnSetupKnown && widget.state.wivrnClientVersion == null && _clientVersion == null))) ...[
+        if (_runtime != 'steamvr' && d != null && (widget.state.wivrnDeclined || (widget.state.wivrnSetupKnown && widget.state.wivrnClientVersion == null && _clientVersion == null))) ...[
           Card(
             child: ListTile(
               leading: const Icon(Icons.view_in_ar),
@@ -340,7 +481,9 @@ class _PcVrScreenState extends State<PcVrScreen> {
           ),
           const SizedBox(height: 12),
         ],
-        if (d == null)
+        if (_runtime == 'steamvr') ...[
+          _steamvrSection(),
+        ] else if (d == null)
           const Text('Checking for WiVRn...')
         else ...[
           Wrap(spacing: 8, runSpacing: 8, children: [

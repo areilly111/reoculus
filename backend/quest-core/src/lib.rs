@@ -30,6 +30,7 @@ pub mod mirror_settings;
 pub mod mirror_watch;
 pub mod paths;
 pub mod settings;
+pub mod steamvr;
 pub mod transport;
 pub mod wivrn;
 pub mod wivrn_apps;

@@ -178,6 +178,24 @@ abstract class BackendService {
   Future<BackendResult> wivrnDecline(String serial);
   /// Undo a decline, so the WiVRn first-run card appears again.
   Future<BackendResult> wivrnUndecline(String serial);
+  // ---- SteamVR + Steam Link (experimental second runtime) ----
+  /// SteamVR readiness in one call: Steam install (native vs
+  /// Flatpak), SteamVR version/branch, NVIDIA driver, whether
+  /// WiVRn is in the way, and plain-language fix instructions.
+  /// Raw backend JSON.
+  Future<Map<String, dynamic>> steamvrDetect();
+  /// Is SteamVR running right now. Raw backend JSON.
+  Future<Map<String, dynamic>> steamvrStatus();
+  /// Stop WiVRn first, snapshot the runtime config, then start
+  /// SteamVR through Steam. The user connects with Steam Link.
+  Future<BackendResult> steamvrStart();
+  /// Stop SteamVR and restore the snapshotted runtime config.
+  Future<BackendResult> steamvrStop();
+  /// The PC VR runtime choice for one headset: 'wivrn' (default)
+  /// or 'steamvr' (experimental).
+  Future<String> steamvrChoice(String serial);
+  /// Set the PC VR runtime choice for one headset.
+  Future<BackendResult> steamvrSetChoice(String serial, String runtime);
   // ---- Homes ----
   /// Home launchers installed on the headset (Meta Home, Lightning,
   /// Quest Home Switcher, and any other).
@@ -914,6 +932,28 @@ class RealBackend implements BackendService {
   Future<BackendResult> wivrnDecline(String serial) async => _toResult(await _run(['wivrn', 'decline', '--serial', serial]));
   @override
   Future<BackendResult> wivrnUndecline(String serial) async => _toResult(await _run(['wivrn', 'undecline', '--serial', serial]));
+
+  @override
+  Future<Map<String, dynamic>> steamvrDetect() async => await _run(['steamvr', 'detect']);
+
+  @override
+  Future<Map<String, dynamic>> steamvrStatus() async => await _run(['steamvr', 'status']);
+
+  @override
+  Future<BackendResult> steamvrStart() async => _toResult(await _run(['steamvr', 'start']));
+
+  @override
+  Future<BackendResult> steamvrStop() async => _toResult(await _run(['steamvr', 'stop']));
+
+  @override
+  Future<String> steamvrChoice(String serial) async {
+    final j = await _run(['steamvr', 'choice', '--serial', serial]);
+    return (j['runtime'] ?? 'wivrn').toString();
+  }
+
+  @override
+  Future<BackendResult> steamvrSetChoice(String serial, String runtime) async =>
+      _toResult(await _run(['steamvr', 'set-choice', '--serial', serial, '--runtime', runtime]));
 
   @override
   // ---- Homes ----

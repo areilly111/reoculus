@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, headset_config, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
+use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, headset_config, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, steamvr, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -46,6 +46,8 @@ enum Commands {
     Library(LibraryArgs),
     /// WiVRn PC VR streaming: detect, start/stop server, config.
     Wivrn(WivrnArgs),
+    /// SteamVR + Steam Link PC VR: detect, start/stop, runtime choice.
+    Steamvr(SteamvrArgs),
     /// Home / environment apps: list, see the active one, switch.
     Homes(HomesArgs),
     /// Home apps: Lightning Launcher + Quest Home Switcher.
@@ -172,6 +174,38 @@ enum WivrnCmd {
     AppsRemove {
         #[arg(long)]
         file: String,
+    },
+}
+
+#[derive(Args)]
+struct SteamvrArgs {
+    #[command(subcommand)]
+    cmd: SteamvrCmd,
+}
+#[derive(Subcommand)]
+enum SteamvrCmd {
+    /// Detect Steam (native vs Flatpak), SteamVR version/branch,
+    /// NVIDIA driver, and whether WiVRn is in the way.
+    Detect,
+    /// Live status: is SteamVR running, is WiVRn running.
+    Status,
+    /// Stop WiVRn first, snapshot the runtime config, then start
+    /// SteamVR through Steam. The user connects with Steam Link.
+    Start,
+    /// Stop SteamVR and restore the snapshotted runtime config.
+    Stop,
+    /// The PC VR runtime choice for one headset (wivrn or steamvr).
+    Choice {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Set the PC VR runtime choice for one headset.
+    SetChoice {
+        #[arg(long)]
+        serial: String,
+        /// wivrn (default) or steamvr (experimental).
+        #[arg(long)]
+        runtime: String,
     },
 }
 
@@ -1230,6 +1264,16 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 }))
             }
             WivrnCmd::AppsRemove { file } => Ok(json!({ "message": wivrn_apps::remove(file)? })),
+        },
+        Commands::Steamvr(a) => match &a.cmd {
+            SteamvrCmd::Detect => Ok(serde_json::to_value(steamvr::detect())?),
+            SteamvrCmd::Status => Ok(serde_json::to_value(steamvr::status())?),
+            SteamvrCmd::Start => Ok(serde_json::to_value(steamvr::start()?)?),
+            SteamvrCmd::Stop => Ok(json!({ "message": steamvr::stop()? })),
+            SteamvrCmd::Choice { serial } => Ok(json!({ "serial": serial, "runtime": steamvr::runtime_choice(serial) })),
+            SteamvrCmd::SetChoice { serial, runtime } => {
+                Ok(json!({ "message": steamvr::set_runtime_choice(serial, runtime)? }))
+            }
         },
         Commands::Homes(a) => match &a.cmd {
             HomesCmd::List { serial } => {
