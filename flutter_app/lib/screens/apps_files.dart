@@ -6,6 +6,8 @@
 // dialog shown before any install.
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import '../models.dart';
 import '../services/app_state.dart';
 import '../services/backend.dart';
@@ -803,6 +805,12 @@ class _AppDetailDialogState extends State<_AppDetailDialog> {
 // ---- Files ----------------------------------------------------------------
 /// Files screen: the headset's shared storage browser, plus the Gallery
 /// tab of screenshots and recordings saved on this computer.
+///
+/// The file list is a dense details view like Windows Explorer or
+/// Dolphin: one compact row per file with name, type, size and
+/// last-modified date, sortable by tapping a column header. On Linux
+/// you can drag files in from the file manager to upload them, and
+/// drag a file out to the file manager to download it.
 class FilesScreen extends StatefulWidget {
   final AppState state;
   const FilesScreen({required this.state, super.key});
@@ -810,14 +818,23 @@ class FilesScreen extends StatefulWidget {
   State<FilesScreen> createState() => _FilesScreenState();
 }
 
+/// True when native drag and drop is available: Linux desktop only,
+/// and never in widget tests (the drag plugin has no test backend).
+bool get _dragEnabled =>
+    Platform.isLinux && !Platform.environment.containsKey('FLUTTER_TEST');
+
 class _FilesScreenState extends State<FilesScreen> {
   String _path = '/sdcard/';
   List<QuestFile> _files = [];
   List<GalleryEntry> _gallery = [];
   bool _loading = true;
   double? _progress;
+  String _progressLabel = '';
   int _tab = 0; // 0 = Files, 1 = Gallery
-  bool _tiles = false; // false = list (default), true = tiles (grid)
+  String _sortKey = 'name'; // name, type, size, date
+  bool _sortAsc = true;
+  bool _dragOver = false;
+  String? _stagingName; // file currently being pulled for a drag-out
 
   @override
   /// Loads the current folder (or the gallery) when the screen opens.
@@ -860,8 +877,129 @@ class _FilesScreenState extends State<FilesScreen> {
 
   List<String> get _crumbs => _path.split('/').where((s) => s.isNotEmpty).toList();
 
+  /// File type from the extension: label + icon for the Type column.
+  ({String label, IconData icon}) _fileType(QuestFile f) {
+    if (f.isDir) return (label: 'Folder', icon: Icons.folder);
+    final ext = f.name.contains('.') ? f.name.split('.').last.toLowerCase() : '';
+    switch (ext) {
+      case 'apk':
+        return (label: 'APK', icon: Icons.android);
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+      case 'gif':
+      case 'webp':
+      case 'bmp':
+        return (label: 'Image', icon: Icons.image);
+      case 'mp4':
+      case 'mkv':
+      case 'mov':
+      case 'webm':
+        return (label: 'Video', icon: Icons.movie);
+      case 'mp3':
+      case 'ogg':
+      case 'flac':
+      case 'wav':
+      case 'm4a':
+        return (label: 'Audio', icon: Icons.music_note);
+      case 'zip':
+      case 'rar':
+      case '7z':
+      case 'tar':
+      case 'gz':
+        return (label: 'Archive', icon: Icons.archive);
+      case 'obb':
+        return (label: 'Game data', icon: Icons.videogame_asset);
+      case 'txt':
+      case 'md':
+      case 'json':
+      case 'xml':
+      case 'log':
+      case 'csv':
+        return (label: 'Text', icon: Icons.description);
+      default:
+        return (label: 'File', icon: Icons.insert_drive_file);
+    }
+  }
+
+  /// Parses the headset's last-modified text for sorting: ISO
+  /// "2026-11-11 12:00", or "Nov 11 12:00" / "Nov 11 2025" from ls.
+  /// Returns null when the date is missing or unparseable.
+  DateTime? _parseModified(String m) {
+    if (m.isEmpty) return null;
+    final iso = DateTime.tryParse(m);
+    if (iso != null) return iso;
+    const months = {
+      'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+      'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
+    };
+    final timeMatch = RegExp(r'^([A-Z][a-z]{2}) (\d{1,2}) (\d{2}):(\d{2})$').firstMatch(m);
+    if (timeMatch != null) {
+      final month = months[timeMatch.group(1)];
+      if (month == null) return null;
+      var d = DateTime(DateTime.now().year, month, int.parse(timeMatch.group(2)!),
+          int.parse(timeMatch.group(3)!), int.parse(timeMatch.group(4)!));
+      // ls shows the time, not the year, for recent files; if that
+      // lands in the future, it must be last year.
+      if (d.isAfter(DateTime.now())) {
+        d = DateTime(d.year - 1, d.month, d.day, d.hour, d.minute);
+      }
+      return d;
+    }
+    final yearMatch = RegExp(r'^([A-Z][a-z]{2}) (\d{1,2}) (\d{4})$').firstMatch(m);
+    if (yearMatch != null) {
+      final month = months[yearMatch.group(1)];
+      if (month == null) return null;
+      return DateTime(
+          int.parse(yearMatch.group(3)!), month, int.parse(yearMatch.group(2)!));
+    }
+    return null;
+  }
+
+  /// The current folder, sorted: folders first, then the picked column.
+  List<QuestFile> get _sorted {
+    final list = List<QuestFile>.from(_files);
+    int byKey(QuestFile a, QuestFile b) {
+      switch (_sortKey) {
+        case 'size':
+          return a.size.compareTo(b.size);
+        case 'date':
+          final da = _parseModified(a.modified);
+          final db = _parseModified(b.modified);
+          if (da == null && db == null) return 0;
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return da.compareTo(db);
+        case 'type':
+          final t = _fileType(a).label.compareTo(_fileType(b).label);
+          return t != 0 ? t : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        default:
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      }
+    }
+
+    list.sort((a, b) {
+      if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+      final c = byKey(a, b);
+      return _sortAsc ? c : -c;
+    });
+    return list;
+  }
+
+  /// Tapping a column header sorts by it; tapping again flips direction.
+  void _setSort(String key) {
+    setState(() {
+      if (_sortKey == key) {
+        _sortAsc = !_sortAsc;
+      } else {
+        _sortKey = key;
+        _sortAsc = true;
+      }
+    });
+  }
+
   @override
-  /// Builds the Files/Gallery tabs, breadcrumbs, and the list or tiles view.
+  /// Builds the Files/Gallery tabs, breadcrumbs, and the details list.
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -883,6 +1021,8 @@ class _FilesScreenState extends State<FilesScreen> {
         ]),
         if (_tab == 0) ...[
           const Text('Your headset\'s shared storage. App private data is not shown here: Android keeps each app\'s private files separate. On a rooted headset, the backend can also read app data for backups.'),
+          if (_dragEnabled)
+            const Text('Drag files in from your file manager to upload them here. Drag a file out to your file manager to download it; it is pulled to this computer first, so a big file takes a moment before the drag starts.'),
           const SizedBox(height: 12),
           Row(children: [
             IconButton(icon: const Icon(Icons.arrow_upward), tooltip: 'Go up one folder', onPressed: _path == '/sdcard/' ? null : _up),
@@ -897,17 +1037,15 @@ class _FilesScreenState extends State<FilesScreen> {
             FilledButton.icon(onPressed: _upload, icon: const Icon(Icons.upload), label: const Text('Upload here')),
             const SizedBox(width: 8),
             OutlinedButton.icon(onPressed: _newFolder, icon: const Icon(Icons.create_new_folder), label: const Text('New folder')),
-            const SizedBox(width: 12),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, icon: Icon(Icons.view_list), label: Text('List')),
-                ButtonSegment(value: true, icon: Icon(Icons.grid_view), label: Text('Tiles')),
-              ],
-              selected: {_tiles},
-              onSelectionChanged: (v) => setState(() => _tiles = v.first),
-            ),
           ]),
-          if (_progress != null) ...[const SizedBox(height: 8), LinearProgressIndicator(value: _progress)],
+          if (_progress != null) ...[
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: _progress),
+            if (_progressLabel.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(_progressLabel, style: const TextStyle(fontSize: 12)),
+            ],
+          ],
           const SizedBox(height: 12),
           Expanded(
             child: widget.state.selectedDevice == null
@@ -915,73 +1053,415 @@ class _FilesScreenState extends State<FilesScreen> {
                 : _loading
                     ? const Center(child: CircularProgressIndicator())
                     : _files.isEmpty
-                        ? const EmptyState(icon: Icons.folder_open, title: 'This folder is empty', body: 'Upload a file here, or go back to another folder.')
-                        : _tiles
-                            ? GridView.builder(
-                                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 180, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.85),
-                                itemCount: _files.length,
-                                itemBuilder: (c, i) {
-                                  final f = _files[i];
-                                  return Card(
-                                    clipBehavior: Clip.antiAlias,
-                                    child: InkWell(
-                                      onTap: f.isDir ? () => _go(f.path) : () => _download(f),
-                                      onLongPress: f.isDir ? null : () => _delete(f),
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(12),
-                                        child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                                          Center(child: Icon(f.isDir ? Icons.folder : Icons.insert_drive_file, size: 48)),
-                                          const SizedBox(height: 8),
-                                          Text(f.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                          Text(f.isDir ? 'Folder' : formatBytes(f.size), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
-                                          if (f.modified.isNotEmpty) Text(f.modified, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
-                                          const Spacer(),
-                                          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                            if (!f.isDir) IconButton(icon: const Icon(Icons.download), tooltip: 'Download to this computer', onPressed: () => _download(f)),
-                                            IconButton(icon: const Icon(Icons.edit), tooltip: 'Rename', onPressed: () => _renameFile(f)),
-                                            IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete from the headset', onPressed: () => _delete(f)),
-                                            if (f.isDir) const Icon(Icons.chevron_right),
-                                          ]),
-                                        ]),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              )
-                            : ListView.builder(
-                            itemCount: _files.length,
-                            itemBuilder: (c, i) {
-                              final f = _files[i];
-                              return Card(
-                                child: ListTile(
-                                  leading: Icon(f.isDir ? Icons.folder : Icons.insert_drive_file, size: 32),
-                                  title: Text(f.name),
-                                  subtitle: Text(_fileDetail(f)),
-                                  trailing: PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert),
-                                    tooltip: 'Actions for ${f.name}',
-                                    onSelected: (v) {
-                                      if (v == 'download') _download(f);
-                                      if (v == 'rename') _renameFile(f);
-                                      if (v == 'delete') _delete(f);
-                                    },
-                                    itemBuilder: (c) => [
-                                      if (!f.isDir) const PopupMenuItem(value: 'download', child: Text('Download to this computer')),
-                                      const PopupMenuItem(value: 'rename', child: Text('Rename')),
-                                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                                    ],
-                                  ),
-                                  onTap: f.isDir ? () => _go(f.path) : () => _download(f),
-                                ),
-                              );
-                            },
-                          ),
+                        ? const EmptyState(icon: Icons.folder_open, title: 'This folder is empty', body: 'Upload a file here, or drag one in from your file manager.')
+                        : _buildFileList(),
           ),
         ] else
           Expanded(child: _buildGallery()),
       ]),
     );
+  }
+
+  /// The dense details list: column header plus one compact row per
+  /// file. On Linux the whole list is a drop target for uploads.
+  Widget _buildFileList() {
+    final files = _sorted;
+    final content = LayoutBuilder(
+      builder: (ctx, constraints) {
+        final width = constraints.maxWidth < 560 ? 560.0 : constraints.maxWidth;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: width,
+            child: Column(children: [
+              _buildHeaderRow(),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: files.length,
+                  itemBuilder: (c, i) => _fileRow(files[i]),
+                ),
+              ),
+            ]),
+          ),
+        );
+      },
+    );
+    if (!_dragEnabled) return content;
+    return DropRegion(
+      formats: Formats.standardFormats,
+      hitTestBehavior: HitTestBehavior.opaque,
+      onDropOver: (event) {
+        final hasFile = event.session.items
+            .any((i) => i.dataReader?.canProvide(Formats.fileUri) == true);
+        return hasFile ? DropOperation.copy : DropOperation.none;
+      },
+      onDropEnter: (_) => setState(() => _dragOver = true),
+      onDropLeave: (_) => setState(() => _dragOver = false),
+      onDropEnded: (_) => setState(() => _dragOver = false),
+      onPerformDrop: _onPerformDrop,
+      child: Stack(children: [
+        content,
+        if (_dragOver)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                  border: Border.all(
+                      color: Theme.of(context).colorScheme.primary, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: const Text('Drop files here to upload them to this folder',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  /// Column header row: tapping a label sorts by that column.
+  Widget _buildHeaderRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(children: [
+        const SizedBox(width: 28),
+        Expanded(
+          child: InkWell(
+            onTap: () => _setSort('name'),
+            child: _headerLabel('Name', 'name'),
+          ),
+        ),
+        SizedBox(
+          width: 110,
+          child: InkWell(
+            onTap: () => _setSort('type'),
+            child: _headerLabel('Type', 'type'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 90,
+          child: InkWell(
+            onTap: () => _setSort('size'),
+            child: _headerLabel('Size', 'size', alignRight: true),
+          ),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 130,
+          child: InkWell(
+            onTap: () => _setSort('date'),
+            child: _headerLabel('Modified', 'date'),
+          ),
+        ),
+        const SizedBox(width: 48),
+      ]),
+    );
+  }
+
+  /// One header label, with a direction arrow when it is the sort key.
+  Widget _headerLabel(String label, String key, {bool alignRight = false}) {
+    final active = _sortKey == key;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment:
+            alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: active
+                      ? Theme.of(context).colorScheme.primary
+                      : null)),
+          if (active) ...[
+            const SizedBox(width: 2),
+            Icon(_sortAsc ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 13, color: Theme.of(context).colorScheme.primary),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// One compact row: small type icon, name, type, size, date, and a
+  /// single menu button. On Linux the row is also a drag source.
+  Widget _fileRow(QuestFile f) {
+    final t = _fileType(f);
+    final staging = _stagingName == f.name;
+    final row = InkWell(
+      onTap: f.isDir ? () => _go(f.path) : () => _download(f),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+            border: Border(
+                bottom: BorderSide(
+                    color:
+                        Theme.of(context).dividerColor.withOpacity(0.35)))),
+        child: Row(children: [
+          Icon(t.icon,
+              size: 20,
+              color: f.isDir ? Theme.of(context).colorScheme.primary : null),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Text(f.name,
+                  maxLines: 1, overflow: TextOverflow.ellipsis)),
+          SizedBox(
+              width: 110,
+              child: Text(t.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13))),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: 90,
+              child: Text(f.isDir ? '' : formatBytes(f.size),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 13))),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: 130,
+              child: Text(f.modified,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13))),
+          SizedBox(
+            width: 48,
+            child: staging
+                ? const Center(
+                    child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2)))
+                : PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    iconSize: 20,
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Actions for ${f.name}',
+                    onSelected: (v) {
+                      if (v == 'download') _download(f);
+                      if (v == 'rename') _renameFile(f);
+                      if (v == 'delete') _delete(f);
+                    },
+                    itemBuilder: (c) => [
+                      if (!f.isDir)
+                        const PopupMenuItem(
+                            value: 'download',
+                            child: Text('Download to this computer')),
+                      const PopupMenuItem(
+                          value: 'rename', child: Text('Rename')),
+                      const PopupMenuItem(
+                          value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
+          ),
+        ]),
+      ),
+    );
+    if (!_dragEnabled) return row;
+    return DragItemWidget(
+      dragItemProvider: (request) => _provideDragItem(f),
+      allowedOperations: () => [DropOperation.copy],
+      child: DraggableWidget(child: row),
+    );
+  }
+
+  /// Drag-out: pulls the file to the staging folder first, because on
+  /// Linux the file must exist on this computer when the drag starts.
+  /// Returns null (and no drag starts) when the pull fails.
+  Future<DragItem?> _provideDragItem(QuestFile f) async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null || !mounted) return null;
+    setState(() => _stagingName = f.name);
+    try {
+      final staged = await _stageForDrag(serial, f);
+      if (staged == null) return null;
+      final item = DragItem(localData: {'path': f.path});
+      item.add(Formats.fileUri(Uri.file(staged)));
+      return item;
+    } finally {
+      if (mounted) setState(() => _stagingName = null);
+    }
+  }
+
+  /// Pulls a file (or a whole folder) into the drag-out staging area
+  /// and returns the local path to offer to the file manager.
+  Future<String?> _stageForDrag(String serial, QuestFile f) async {
+    final cache = await getApplicationCacheDirectory();
+    final dir = Directory('${cache.path}/drag-out/$serial');
+    await dir.create(recursive: true);
+    await _pruneStaging(dir);
+    if (f.isDir) {
+      // adb pull of a folder copies it into the staging dir as <name>.
+      final r = await widget.state.backend.pullFile(serial, f.path, dir.path);
+      if (!r.ok) {
+        if (mounted) showResult(context, false, r.message);
+        return null;
+      }
+      final staged = Directory('${dir.path}/${f.name}');
+      return await staged.exists() ? staged.path : null;
+    }
+    final stagedPath = '${dir.path}/${f.name}';
+    final r = await widget.state.backend.pullFile(serial, f.path, stagedPath);
+    if (!r.ok) {
+      if (mounted) showResult(context, false, r.message);
+      return null;
+    }
+    return await File(stagedPath).exists() ? stagedPath : null;
+  }
+
+  /// Staged drag-out files are cleaned up by age and size, never by
+  /// drop success: on Linux the drag source is never told where the
+  /// file was dropped, or whether the drop happened at all.
+  Future<void> _pruneStaging(Directory dir) async {
+    const maxAge = Duration(days: 7);
+    const maxBytes = 1024 * 1024 * 1024; // 1 GB
+    final now = DateTime.now();
+    try {
+      await for (final e in dir.list(recursive: true)) {
+        try {
+          final stat = await e.stat();
+          if (now.difference(stat.modified) > maxAge) {
+            await e.delete(recursive: true);
+          }
+        } catch (_) {}
+      }
+      final files = <File>[];
+      await for (final e in dir.list(recursive: true)) {
+        if (e is File) files.add(e);
+      }
+      files.sort(
+          (a, b) => a.statSync().modified.compareTo(b.statSync().modified));
+      var total = 0;
+      for (final f in files) {
+        total += f.lengthSync();
+      }
+      for (final f in files) {
+        if (total <= maxBytes) break;
+        try {
+          total -= f.lengthSync();
+          await f.delete();
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  /// Drag-in: collects the dropped files' paths, then uploads them.
+  /// The values arrive through callbacks, so the counter waits until
+  /// every item has answered (or failed) before starting the upload.
+  Future<void> _onPerformDrop(PerformDropEvent event) async {
+    final uris = <Uri>[];
+    var pending = 0;
+    for (final item in event.session.items) {
+      final reader = item.dataReader;
+      if (reader == null || !reader.canProvide(Formats.fileUri)) continue;
+      pending++;
+      reader.getValue<Uri>(Formats.fileUri, (value) {
+        if (value != null) uris.add(value);
+        pending--;
+        if (pending == 0) _handleDroppedUris(uris);
+      }, onError: (_) {
+        pending--;
+        if (pending == 0) _handleDroppedUris(uris);
+      });
+    }
+  }
+
+  /// Uploads dropped files (and whole dropped folders, keeping their
+  /// structure) into the folder showing. Asks once when names clash.
+  Future<void> _handleDroppedUris(List<Uri> uris) async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null || uris.isEmpty || !mounted) return;
+    final pairs = <({File file, String remote})>[];
+    for (final uri in uris) {
+      final type = FileSystemEntity.typeSync(uri.toFilePath());
+      if (type == FileSystemEntityType.directory) {
+        final dir = Directory(uri.toFilePath());
+        final base = dir.path.split('/').last;
+        for (final e in dir.listSync(recursive: true)) {
+          if (e is File) {
+            final rel = e.path.substring(dir.path.length + 1);
+            pairs.add((file: e, remote: '$_path$base/$rel'));
+          }
+        }
+      } else if (type == FileSystemEntityType.file) {
+        final file = File(uri.toFilePath());
+        pairs.add(
+            (file: file, remote: '$_path${file.path.split('/').last}'));
+      }
+    }
+    if (pairs.isEmpty || !mounted) return;
+    final existing = _files.map((f) => f.name).toSet();
+    final conflicts = pairs
+        .where((p) {
+          final rel = p.remote.substring(_path.length);
+          return !rel.contains('/') && existing.contains(rel);
+        })
+        .map((p) => p.remote.split('/').last)
+        .toSet()
+        .toList();
+    var skip = <String>{};
+    if (conflicts.isNotEmpty) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Some files already exist'),
+          content: Text(
+              'These files are already in this folder:\n${conflicts.take(5).join(', ')}${conflicts.length > 5 ? '\n…and ${conflicts.length - 5} more' : ''}\n\nOverwrite them, or skip them?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(c, 'skip'),
+                child: const Text('Skip those')),
+            FilledButton(
+                onPressed: () => Navigator.pop(c, 'overwrite'),
+                child: const Text('Overwrite')),
+          ],
+        ),
+      );
+      if (choice == null) return;
+      if (choice == 'skip') skip = conflicts.toSet();
+    }
+    final todo = pairs
+        .where((p) => !skip.contains(p.remote.split('/').last))
+        .toList();
+    final createdDirs = <String>{};
+    var done = 0;
+    final currentDir = _path.substring(0, _path.length - 1);
+    for (final p in todo) {
+      if (!mounted) return;
+      final slash = p.remote.lastIndexOf('/');
+      final remoteDir = p.remote.substring(0, slash);
+      if (remoteDir != currentDir && !createdDirs.contains(remoteDir)) {
+        await widget.state.backend.makeDir(serial, remoteDir);
+        createdDirs.add(remoteDir);
+      }
+      final name = p.remote.split('/').last;
+      setState(() {
+        _progress = todo.isEmpty ? null : done / todo.length;
+        _progressLabel = 'Uploading $name… (${done + 1} of ${todo.length})';
+      });
+      final r =
+          await widget.state.backend.pushFile(serial, p.file.path, p.remote);
+      if (!r.ok && mounted) {
+        showResult(context, false, 'Could not upload $name: ${r.message}');
+      }
+      done++;
+    }
+    setState(() {
+      _progress = null;
+      _progressLabel = '';
+    });
+    if (mounted) {
+      showResult(context, true,
+          'Uploaded $done file${done == 1 ? '' : 's'} to $_path');
+    }
+    widget.state.log('Upload: $done file(s) dropped into $_path');
+    await _load();
   }
 
   /// Builds the Gallery tab: screenshots and recordings saved in
@@ -1057,9 +1537,15 @@ class _FilesScreenState extends State<FilesScreen> {
     final local = await pathDialog(context, title: 'Upload a file', hint: 'Type the full path of the file on this computer to send to the headset.');
     if (local == null || local.isEmpty) return;
     // Progress is a rough guess: the backend does not report transfer progress.
-    setState(() => _progress = 0.5);
+    setState(() {
+      _progress = 0.5;
+      _progressLabel = 'Uploading ${local.split('/').last}…';
+    });
     final r = await widget.state.backend.pushFile(serial, local, '$_path${local.split('/').last}');
-    setState(() => _progress = null);
+    setState(() {
+      _progress = null;
+      _progressLabel = '';
+    });
     if (mounted) showResult(context, r.ok, r.message);
     widget.state.log('Upload: ${local.split('/').last}');
     await _load();
@@ -1070,9 +1556,15 @@ class _FilesScreenState extends State<FilesScreen> {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
     // Progress is a rough guess: the backend does not report transfer progress.
-    setState(() => _progress = 0.5);
+    setState(() {
+      _progress = 0.5;
+      _progressLabel = 'Downloading ${f.name}…';
+    });
     final r = await widget.state.backend.pullFile(serial, f.path, '/tmp/${f.name}');
-    setState(() => _progress = null);
+    setState(() {
+      _progress = null;
+      _progressLabel = '';
+    });
     if (mounted) showResult(context, r.ok, r.message);
   }
 
@@ -1088,13 +1580,6 @@ class _FilesScreenState extends State<FilesScreen> {
       widget.state.log('Deleted ${f.name}');
       await _load();
     }
-  }
-
-  /// One-line detail for the list view: size or Folder, plus the
-  /// last-modified date when the headset reported one.
-  String _fileDetail(QuestFile f) {
-    final base = f.isDir ? 'Folder' : formatBytes(f.size);
-    return f.modified.isEmpty ? base : '$base  •  ${f.modified}';
   }
 
   /// Renames a file or folder in place. The new name stays in the

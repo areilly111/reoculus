@@ -101,13 +101,14 @@ const _apps = <QuestApp>[
 ];
 
 const _files = <QuestFile>[
-  QuestFile(name: 'Lorem ipsum', path: '/sdcard/Lorem ipsum', isDir: true, size: 0),
-  QuestFile(name: 'Dolor sit amet', path: '/sdcard/Dolor sit amet', isDir: true, size: 0),
-  QuestFile(name: 'Consectetur', path: '/sdcard/Consectetur', isDir: true, size: 0),
-  QuestFile(name: 'Lorem ipsum dolor.txt', path: '/sdcard/Lorem ipsum dolor.txt', isDir: false, size: 123456),
-  QuestFile(name: 'Sed do eiusmod.mp4', path: '/sdcard/Sed do eiusmod.mp4', isDir: false, size: 234567890),
-  QuestFile(name: 'Ut labore.pdf', path: '/sdcard/Ut labore.pdf', isDir: false, size: 3456789),
-  QuestFile(name: 'Dolore magna.png', path: '/sdcard/Dolore magna.png', isDir: false, size: 4567890),
+  QuestFile(name: 'Lorem ipsum', path: '/sdcard/Lorem ipsum', isDir: true, size: 0, modified: '2026-11-11 12:00'),
+  QuestFile(name: 'Dolor sit amet', path: '/sdcard/Dolor sit amet', isDir: true, size: 0, modified: '2026-11-10 09:30'),
+  QuestFile(name: 'Consectetur', path: '/sdcard/Consectetur', isDir: true, size: 0, modified: 'Nov 9 18:45'),
+  QuestFile(name: 'Lorem ipsum dolor.txt', path: '/sdcard/Lorem ipsum dolor.txt', isDir: false, size: 123456, modified: '2026-11-11 12:00'),
+  QuestFile(name: 'Sed do eiusmod.mp4', path: '/sdcard/Sed do eiusmod.mp4', isDir: false, size: 234567890, modified: 'Nov 10 22:15'),
+  QuestFile(name: 'Ut labore.pdf', path: '/sdcard/Ut labore.pdf', isDir: false, size: 3456789, modified: '2026-11-09 08:00'),
+  QuestFile(name: 'Dolore magna.png', path: '/sdcard/Dolore magna.png', isDir: false, size: 4567890, modified: 'Nov 8 14:20'),
+  QuestFile(name: 'Magna aliqua.apk', path: '/sdcard/Magna aliqua.apk', isDir: false, size: 45678901, modified: '2026-11-11 10:05'),
 ];
 
 const _gallery = <GalleryEntry>[

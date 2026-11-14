@@ -1,7 +1,7 @@
 name: quest_companion
 description: "ReOculus - a clean, no-ads, no-account companion app for Meta Quest headsets. Linux desktop first, Android-ready."
 publish_to: "none"
-version: 0.2.29+31
+version: 0.2.30+32
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -11,6 +11,11 @@ dependencies:
   flutter:
     sdk: flutter
   file_picker: ^8.1.0
+  # Native drag and drop for the Files screen (Linux desktop): drag files
+  # in from the file manager to upload, drag headset files out to
+  # download. Drag-out pulls to a staging folder first, because on Linux
+  # the file must exist on this computer when the drag starts.
+  super_drag_and_drop: ^0.9.1
   # Android only: where the bundled questctl binary is extracted to
   # (the app's files dir) and where the headset's Wi-Fi address is saved.
   path_provider: ^2.1.0

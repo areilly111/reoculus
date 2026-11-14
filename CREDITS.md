@@ -60,6 +60,10 @@ the AppImage carries `LICENSE`, this file, and the full GPLv3 text
 | --- | --- |
 | Flutter and Dart SDK | BSD 3-Clause, https://flutter.dev |
 | file_picker | MIT (Copyright 2018 Miguel Ruivo), https://pub.dev/packages/file_picker |
+| path_provider | BSD 3-Clause, https://pub.dev/packages/path_provider |
+| super_drag_and_drop | MIT (Copyright 2022 Superlist, Matej Knopp and contributors), https://pub.dev/packages/super_drag_and_drop |
+| super_clipboard | MIT (Copyright 2022 Superlist, Matej Knopp and contributors), https://pub.dev/packages/super_clipboard |
+| super_native_extensions | MIT (Copyright 2022 Superlist, Matej Knopp and contributors), https://pub.dev/packages/super_native_extensions |
 | flutter_lints (dev only) | BSD 3-Clause |
 
 **Android Open Source Project** (the headset's OS) — Apache 2.0.
