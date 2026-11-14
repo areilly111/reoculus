@@ -150,8 +150,14 @@ abstract class BackendService {
   /// PC games and apps registered with WiVRn on this computer.
   Future<List<WivrnApp>> wivrnAppsList();
   /// Register a PC game or app with WiVRn. name is shown in the
-  /// headset, exec is the command that starts it.
-  Future<BackendResult> wivrnAppsAdd(String name, String exec);
+  /// headset, exec is the command that starts it. launchOptions
+  /// are extra command line options after the executable, icon is
+  /// an image file or a theme icon name, comment is a one-line
+  /// description. The three are empty when not given.
+  Future<BackendResult> wivrnAppsAdd(String name, String exec, {String launchOptions = '', String icon = '', String comment = ''});
+  /// Change a PC game or app in WiVRn. file is the desktop entry
+  /// the backend listed; the file keeps its name.
+  Future<BackendResult> wivrnAppsUpdate(String file, String name, String exec, {String launchOptions = '', String icon = '', String comment = ''});
   /// Remove a PC game or app from WiVRn. file is the desktop entry
   /// the backend listed.
   Future<BackendResult> wivrnAppsRemove(String file);
@@ -872,7 +878,37 @@ class RealBackend implements BackendService {
     return list.map((e) => WivrnApp.fromJson(e as Map<String, dynamic>)).toList();
   }
   @override
-  Future<BackendResult> wivrnAppsAdd(String name, String exec) async => _toResult(await _run(['wivrn', 'apps-add', '--name', name, '--exec', exec]));
+  Future<BackendResult> wivrnAppsAdd(String name, String exec, {String launchOptions = '', String icon = '', String comment = ''}) async => _toResult(await _run([
+        'wivrn',
+        'apps-add',
+        '--name',
+        name,
+        '--exec',
+        exec,
+        if (launchOptions.isNotEmpty) '--launch-options',
+        if (launchOptions.isNotEmpty) launchOptions,
+        if (icon.isNotEmpty) '--icon',
+        if (icon.isNotEmpty) icon,
+        if (comment.isNotEmpty) '--comment',
+        if (comment.isNotEmpty) comment,
+      ]));
+  @override
+  Future<BackendResult> wivrnAppsUpdate(String file, String name, String exec, {String launchOptions = '', String icon = '', String comment = ''}) async => _toResult(await _run([
+        'wivrn',
+        'apps-update',
+        '--file',
+        file,
+        '--name',
+        name,
+        '--exec',
+        exec,
+        if (launchOptions.isNotEmpty) '--launch-options',
+        if (launchOptions.isNotEmpty) launchOptions,
+        if (icon.isNotEmpty) '--icon',
+        if (icon.isNotEmpty) icon,
+        if (comment.isNotEmpty) '--comment',
+        if (comment.isNotEmpty) comment,
+      ]));
   @override
   Future<BackendResult> wivrnAppsRemove(String file) async => _toResult(await _run(['wivrn', 'apps-remove', '--file', file]));
   @override

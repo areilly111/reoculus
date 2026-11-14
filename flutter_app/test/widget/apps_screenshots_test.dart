@@ -407,10 +407,11 @@ class FakeBackend implements BackendService {
     if (name == #wivrnHeadsetClient) return Future<String?>.value('26.9');
     if (name == #wivrnAppsList) {
       return Future<List<WivrnApp>>.value(const [
-        WivrnApp(file: 'open-saber.desktop', name: 'Open Saber', exec: '/home/anthony/Downloads/OpenSaber.x86_64', icon: ''),
+        WivrnApp(file: 'open-saber.desktop', name: 'Open Saber', exec: '/home/anthony/Downloads/OpenSaber.x86_64', icon: '', launchOptions: '--fullscreen'),
       ]);
     }
     if (name == #wivrnAppsAdd) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Open Saber added to the headset launcher.'));
+    if (name == #wivrnAppsUpdate) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Open Saber updated.'));
     if (name == #wivrnAppsRemove) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Removed from the headset launcher.'));
     if (name == #wivrnClientSettings) {
       return Future<WivrnClientSettings?>.value(const WivrnClientSettings(
@@ -600,7 +601,16 @@ void main() {
   testWidgets('PC VR games and apps, expanded', (WidgetTester tester) async {
     final state = _state();
     await _pump(tester, state, PcVrScreen(state: state));
+    // The games card sits below the fold at the test size, so a
+    // plain tap misses it: scroll it into view first, then tap.
+    await tester.ensureVisible(find.text('PC Games/Apps'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('PC Games/Apps'));
+    await tester.pumpAndSettle();
+    // Scroll the rows into view so the golden shows them, with
+    // the edit pencil and the launch options line, instead of
+    // the top of the page.
+    await tester.ensureVisible(find.text('Open Saber'));
     await tester.pumpAndSettle();
     await expectLater(find.byType(PcVrScreen), matchesGoldenFile('goldens/pc-vr-games.png'));
   });

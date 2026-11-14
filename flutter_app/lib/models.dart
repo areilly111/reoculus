@@ -943,12 +943,15 @@ class MirrorSettings {
 /// One PC game or app registered with WiVRn.
 class WivrnApp {
   final String file, name, exec, icon;
-  const WivrnApp({required this.file, required this.name, required this.exec, required this.icon});
+  final String launchOptions, comment;
+  const WivrnApp({required this.file, required this.name, required this.exec, required this.icon, this.launchOptions = '', this.comment = ''});
   factory WivrnApp.fromJson(Map<String, dynamic> j) => WivrnApp(
         file: (j['file'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
         exec: (j['exec'] ?? '').toString(),
         icon: (j['icon'] ?? '').toString(),
+        launchOptions: (j['launch_options'] ?? '').toString(),
+        comment: (j['comment'] ?? '').toString(),
       );
 }
 

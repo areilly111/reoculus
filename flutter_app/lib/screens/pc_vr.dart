@@ -2,6 +2,8 @@
 // Starts and stops the wivrn-server, picks the encoder, lists the PC
 // games that show in the headset launcher, and edits the WiVRn settings
 // saved on the headset.
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../models.dart';
@@ -122,43 +124,119 @@ class _PcVrScreenState extends State<PcVrScreen> {
     }
   }
 
-  /// Add a game or app: pick its executable with Browse, name it,
-  /// and the backend writes the WiVRn launcher entry for it.
-  Future<void> _addApp() async {
-    final nameCtrl = TextEditingController();
-    final pathCtrl = TextEditingController();
+  /// The game icon for a row or the edit dialog: a thumbnail when
+  /// the entry points at a png or jpg file, the default gamepad
+  /// icon otherwise (theme icon names and svg files have no
+  /// thumbnail here).
+  Widget _appIcon(String icon, {double size = 40}) {
+    final lower = icon.toLowerCase();
+    if (icon.isNotEmpty &&
+        (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg'))) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.file(
+          File(icon),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stack) => Icon(Icons.videogame_asset, size: size),
+        ),
+      );
+    }
+    return Icon(Icons.videogame_asset, size: size);
+  }
+
+  /// Add a game or app, or edit one already added. Same dialog
+  /// for both: name, executable, launch options, icon and a
+  /// one-line description. Editing keeps the same .desktop file,
+  /// only the fields change.
+  Future<void> _appDialog({WivrnApp? existing}) async {
+    final isEdit = existing != null;
+    final nameCtrl = TextEditingController(text: existing?.name ?? '');
+    final pathCtrl = TextEditingController(text: existing?.exec ?? '');
+    final optsCtrl = TextEditingController(text: existing?.launchOptions ?? '');
+    // The backend writes the default theme icon into the file,
+    // so treat it as "no icon picked" here.
+    final iconCtrl = TextEditingController(
+        text: (existing?.icon ?? '') == 'applications-games' ? '' : (existing?.icon ?? ''));
+    final descCtrl = TextEditingController(text: existing?.comment ?? '');
     final result = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Add game or app'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: nameCtrl, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Name (as it shows in the headset)')),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: TextField(controller: pathCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Executable file'))),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final picked = await FilePicker.platform.pickFiles();
-                final path = picked?.files.single.path;
-                if (path != null && path.isNotEmpty) {
-                  pathCtrl.text = path;
-                  if (nameCtrl.text.isEmpty) {
-                    nameCtrl.text = path.split('/').last.split('.').first;
-                  }
-                }
-              },
-              icon: const Icon(Icons.folder_open),
-              label: const Text('Browse'),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          const Text('Pick the game or app executable, for example a Linux binary or an AppImage. It shows in the WiVRn launcher on the headset.', style: TextStyle(fontSize: 13)),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Add')),
-        ],
+      builder: (c) => StatefulBuilder(
+        builder: (c, setDialogState) => AlertDialog(
+          title: Text(isEdit ? 'Edit ${existing.name}' : 'Add game or app'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: nameCtrl, autofocus: !isEdit, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Name (as it shows in the headset)')),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: TextField(controller: pathCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Executable file'))),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await FilePicker.platform.pickFiles();
+                    final path = picked?.files.single.path;
+                    if (path != null && path.isNotEmpty) {
+                      pathCtrl.text = path;
+                      if (nameCtrl.text.isEmpty) {
+                        nameCtrl.text = path.split('/').last.split('.').first;
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('Browse'),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              const Text('Pick the game or app executable, for example a Linux binary or an AppImage. It shows in the WiVRn launcher on the headset.', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 12),
+              TextField(controller: optsCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Launch options', hintText: '--fullscreen')),
+              const SizedBox(height: 8),
+              const Text('Extra command line options, after the executable. For example --fullscreen, or -vr. Leave it empty when the game needs none.', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 12),
+              Row(children: [
+                _appIcon(iconCtrl.text, size: 48),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(
+                  controller: iconCtrl,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Icon image (optional)'),
+                )),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: const ['png', 'jpg', 'jpeg', 'svg', 'xpm'],
+                    );
+                    final path = picked?.files.single.path;
+                    if (path != null && path.isNotEmpty) {
+                      setDialogState(() => iconCtrl.text = path);
+                    }
+                  },
+                  icon: const Icon(Icons.image),
+                  label: const Text('Browse'),
+                ),
+                if (iconCtrl.text.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    tooltip: 'Use the default icon',
+                    onPressed: () => setDialogState(() => iconCtrl.clear()),
+                  ),
+                ],
+              ]),
+              const SizedBox(height: 8),
+              const Text('A png, jpg, svg or xpm image. It shows next to the game in this list and in the headset launcher. Empty means the default game icon.', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 12),
+              TextField(controller: descCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Description (optional, one line)')),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(isEdit ? 'Save' : 'Add')),
+          ],
+        ),
       ),
     );
     if (result != true || !mounted) return;
@@ -168,11 +246,19 @@ class _PcVrScreenState extends State<PcVrScreen> {
       showResult(context, false, 'Give the game a name and pick its file first.');
       return;
     }
+    final opts = optsCtrl.text.trim();
+    final icon = iconCtrl.text.trim();
+    final desc = descCtrl.text.trim();
     await _act(() async {
-      final r = await widget.state.backend.wivrnAppsAdd(name, path);
+      final r = isEdit
+          ? await widget.state.backend.wivrnAppsUpdate(existing.file, name, path, launchOptions: opts, icon: icon, comment: desc)
+          : await widget.state.backend.wivrnAppsAdd(name, path, launchOptions: opts, icon: icon, comment: desc);
       if (mounted) showResult(context, r.ok, r.message);
     });
   }
+
+  /// Opens the edit dialog for one game.
+  Future<void> _editApp(WivrnApp app) => _appDialog(existing: app);
 
   /// Removes a game from the WiVRn launcher on the headset, after
   /// confirming. The game itself stays on the computer.
@@ -632,13 +718,25 @@ class _PcVrScreenState extends State<PcVrScreen> {
                   : '${_apps.length} ${_apps.length == 1 ? 'game' : 'games'} added. They show in the WiVRn launcher on the headset.'),
               children: [
                 ..._apps.map((a) => ListTile(
+                      leading: _appIcon(a.icon),
                       title: Text(a.name),
-                      subtitle: Text(a.exec, style: const TextStyle(fontSize: 12)),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete),
-                        tooltip: 'Remove from the headset launcher',
-                        onPressed: _busy ? null : () => _removeApp(a),
-                      ),
+                      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(a.exec, style: const TextStyle(fontSize: 12)),
+                        if (a.launchOptions.isNotEmpty) Text(a.launchOptions, style: const TextStyle(fontSize: 12)),
+                        if (a.comment.isNotEmpty) Text(a.comment, style: const TextStyle(fontSize: 12)),
+                      ]),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit),
+                          tooltip: 'Edit this game',
+                          onPressed: _busy ? null : () => _editApp(a),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete),
+                          tooltip: 'Remove from the headset launcher',
+                          onPressed: _busy ? null : () => _removeApp(a),
+                        ),
+                      ]),
                     )),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -646,7 +744,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
                     const Text('If a new game does not show up in the headset yet, restart the server.', style: TextStyle(fontSize: 13)),
                     const SizedBox(height: 8),
                     FilledButton.icon(
-                      onPressed: _busy ? null : _addApp,
+                      onPressed: _busy ? null : () => _appDialog(),
                       icon: const Icon(Icons.add),
                       label: const Text('Add game or app'),
                     ),

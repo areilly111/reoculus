@@ -169,6 +169,32 @@ enum WivrnCmd {
         name: String,
         #[arg(long)]
         exec: String,
+        /// Extra command line options, after the executable.
+        #[arg(long)]
+        launch_options: Option<String>,
+        /// Icon file (png, jpg, svg, xpm) or a theme icon name.
+        #[arg(long)]
+        icon: Option<String>,
+        /// One-line description shown in some launchers.
+        #[arg(long)]
+        comment: Option<String>,
+    },
+    /// Change a custom PC game/app in the WiVRn launcher. file is
+    /// the .desktop file name from apps-list; the file keeps its
+    /// name, only the fields change.
+    AppsUpdate {
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        exec: String,
+        #[arg(long)]
+        launch_options: Option<String>,
+        #[arg(long)]
+        icon: Option<String>,
+        #[arg(long)]
+        comment: Option<String>,
     },
     /// Remove a custom PC game/app from the WiVRn launcher.
     AppsRemove {
@@ -1256,10 +1282,30 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             WivrnCmd::Decline { serial } => Ok(json!({ "message": wivrn::set_declined(true, serial)? })),
             WivrnCmd::Undecline { serial } => Ok(json!({ "message": wivrn::set_declined(false, serial)? })),
             WivrnCmd::AppsList => Ok(json!({ "apps": wivrn_apps::list() })),
-            WivrnCmd::AppsAdd { name, exec } => {
-                let app = wivrn_apps::add(name, exec)?;
+            WivrnCmd::AppsAdd { name, exec, launch_options, icon, comment } => {
+                let app = wivrn_apps::add(
+                    name,
+                    exec,
+                    launch_options.as_deref().unwrap_or(""),
+                    icon.as_deref().unwrap_or(""),
+                    comment.as_deref().unwrap_or(""),
+                )?;
                 Ok(json!({
                     "message": format!("{} added to the headset launcher. Restart the server if it does not show up yet.", app.name),
+                    "app": app,
+                }))
+            }
+            WivrnCmd::AppsUpdate { file, name, exec, launch_options, icon, comment } => {
+                let app = wivrn_apps::update(
+                    file,
+                    name,
+                    exec,
+                    launch_options.as_deref().unwrap_or(""),
+                    icon.as_deref().unwrap_or(""),
+                    comment.as_deref().unwrap_or(""),
+                )?;
+                Ok(json!({
+                    "message": format!("{} updated. Restart the server if the change does not show up yet.", app.name),
                     "app": app,
                 }))
             }
