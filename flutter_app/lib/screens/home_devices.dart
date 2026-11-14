@@ -327,8 +327,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Card(
       child: ListTile(
         leading: Icon(primary.transport == 'wifi' ? Icons.wifi : Icons.usb, size: 32),
-        title: Row(children: [
-          Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
           IconButton(
             icon: const Icon(Icons.edit, size: 20),
             tooltip: 'Rename this headset',

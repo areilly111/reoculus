@@ -1026,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "quest-core"
-version = "0.2.26"
+version = "0.2.27"
 dependencies = [
  "base64",
  "libadb",
@@ -1041,7 +1041,7 @@ dependencies = [
 
 [[package]]
 name = "questctl"
-version = "0.2.26"
+version = "0.2.27"
 dependencies = [
  "clap",
  "quest-core",

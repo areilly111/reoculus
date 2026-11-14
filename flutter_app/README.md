@@ -73,7 +73,7 @@ flutter run -d linux
 
 ### The Android APK (phone-as-host companion, Wi-Fi first)
 
-Version 0.2.26 ships as `ReOculus-Android-0.2.26.apk`
+Version 0.2.27 ships as `ReOculus-Android-0.2.27.apk`
 (debug-signed, fine for sideload; no persistent release keystore
 was created). On your phone:
 
@@ -93,7 +93,7 @@ was created). On your phone:
    phone app, and installing test builds on the headset needs
    the owner's say-so each time.
 
-**What works on Android in 0.2.26 vs desktop-only:** the app bundles
+**What works on Android in 0.2.27 vs desktop-only:** the app bundles
 the questctl Rust binary built for Android aarch64
 (`backend/scripts/build-android.sh`, copied to
 `assets/questctl-android-arm64` before `flutter build apk`) and
