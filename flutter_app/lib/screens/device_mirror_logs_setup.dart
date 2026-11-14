@@ -307,11 +307,19 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
         ]),
       );
 
-  /// A small subheading inside the About card (Headset, Display,
-  /// Battery, ...). The first one sits right under the card title.
-  Widget _aboutSection(String title) => Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 2),
-        child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+  /// One section of the About card (Headset, Display, Battery, ...)
+  /// as a column of labelled rows. The card lays these side by
+  /// side, 3 across on a wide window, 2 on a medium one, 1 on a
+  /// narrow one, instead of one long stacked list.
+  Widget _aboutSectionBlock(String title, List<Widget> rows) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          ...rows,
+        ],
       );
 
   /// One Singularity download row (Singularity, Frida, or the hosts
@@ -467,26 +475,43 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                   : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('About this headset', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
-                      _aboutSection('Headset'),
-                      _aboutRow('Name', s.headsetName),
-                      _aboutRow('Model', info.displayName),
-                      if (info.isQuest1) const Text('Singularity root features and Quest Home Switcher are not available on Quest 1.'),
-                      _aboutRow('Serial', info.serial),
-                      _aboutRow('Firmware', info.firmware),
-                      _aboutRow('Android', info.androidVersion),
-                      _aboutSection('Display'),
-                      _aboutRow('Screen', info.resolution),
-                      if (info.densityDpi > 0) _aboutRow('Density', '${info.densityDpi} dpi'),
-                      _aboutSection('Battery'),
-                      _aboutRow('Level', '${info.batteryLevel}%${info.charging ? ' (charging)' : ''}'),
-                      if (info.batteryHealth.isNotEmpty) _aboutRow('Health', info.batteryHealth),
-                      if (info.batteryTempC > 0) _aboutRow('Temperature', '${info.batteryTempC}°C'),
-                      if (info.batteryVoltageMv > 0) _aboutRow('Voltage', '${(info.batteryVoltageMv / 1000).toStringAsFixed(2)} V'),
-                      _aboutSection('Storage'),
-                      _aboutRow('Used', '${info.storageUsedGb} GB of ${info.storageTotalGb} GB'),
-                      _aboutRow('Free', '${info.storageFreeGb} GB'),
-                      _aboutSection('Processor'),
-                      _aboutRow('CPU', info.cpuAbi),
+                      LayoutBuilder(builder: (context, constraints) {
+                        final cols = constraints.maxWidth >= 1000 ? 3 : constraints.maxWidth >= 640 ? 2 : 1;
+                        const gap = 24.0;
+                        final w = (constraints.maxWidth - gap * (cols - 1)) / cols;
+                        final sections = <Widget>[
+                          _aboutSectionBlock('Headset', [
+                            _aboutRow('Name', s.headsetName),
+                            _aboutRow('Model', info.displayName),
+                            if (info.isQuest1) const Text('Singularity root features and Quest Home Switcher are not available on Quest 1.'),
+                            _aboutRow('Serial', info.serial),
+                            _aboutRow('Firmware', info.firmware),
+                            _aboutRow('Android', info.androidVersion),
+                          ]),
+                          _aboutSectionBlock('Display', [
+                            _aboutRow('Screen', info.resolution),
+                            if (info.densityDpi > 0) _aboutRow('Density', '${info.densityDpi} dpi'),
+                          ]),
+                          _aboutSectionBlock('Battery', [
+                            _aboutRow('Level', '${info.batteryLevel}%${info.charging ? ' (charging)' : ''}'),
+                            if (info.batteryHealth.isNotEmpty) _aboutRow('Health', info.batteryHealth),
+                            if (info.batteryTempC > 0) _aboutRow('Temperature', '${info.batteryTempC}°C'),
+                            if (info.batteryVoltageMv > 0) _aboutRow('Voltage', '${(info.batteryVoltageMv / 1000).toStringAsFixed(2)} V'),
+                          ]),
+                          _aboutSectionBlock('Storage', [
+                            _aboutRow('Used', '${info.storageUsedGb} GB of ${info.storageTotalGb} GB'),
+                            _aboutRow('Free', '${info.storageFreeGb} GB'),
+                          ]),
+                          _aboutSectionBlock('Processor', [
+                            _aboutRow('CPU', info.cpuAbi),
+                          ]),
+                        ];
+                        return Wrap(
+                          spacing: gap,
+                          runSpacing: 16,
+                          children: [for (final sec in sections) SizedBox(width: w, child: sec)],
+                        );
+                      }),
                     ]),
             ),
           ),
@@ -2017,7 +2042,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.27. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
+                  const Text('ReOculus 0.2.28. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),
