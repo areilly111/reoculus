@@ -913,6 +913,22 @@ class HomeAppStatus {
 
 /// Where backups and recordings live on this computer, and whether
 /// each is still the default.
+/// One Setup checklist item, as detected on this machine.
+/// done is null when the item cannot be checked here: the UI
+/// shows the detail instead of guessing. detail is the plain
+/// language reason or evidence ("android-sdk-platform-tools-
+/// common is installed", "no headset is connected", ...).
+class SetupCheck {
+  final String id, detail;
+  final bool? done;
+  const SetupCheck({required this.id, required this.done, required this.detail});
+  factory SetupCheck.fromJson(Map<String, dynamic> j) => SetupCheck(
+        id: (j['id'] ?? '').toString(),
+        done: j['done'] as bool?,
+        detail: (j['detail'] ?? '').toString(),
+      );
+}
+
 class PathsInfo {
   final String backupRoot, recordingsRoot, configFile;
   final bool backupRootIsDefault, recordingsRootIsDefault;

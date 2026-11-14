@@ -1845,16 +1845,22 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  bool _devMode = true;
-  bool _udev = false;
-  bool _allowed = true;
+  /// The one item ReOculus cannot check itself (the Meta
+  /// developer account lives on Meta's website): the only manual
+  /// box left. Everything else is detected, see _check.
+  bool _devAccountDone = false;
+  bool _checking = false;
   PathsInfo? _paths;
 
   @override
-  /// Loads the storage locations when the screen opens.
+  /// Loads the storage locations and re-checks the setup state
+  /// when the screen opens. The launch-time check from AppState
+  /// is already there, so this is instant when it ran; the
+  /// re-check catches a headset plugged in since launch.
   void initState() {
     super.initState();
     _loadPaths();
+    widget.state.refreshSetupChecks();
   }
 
   /// Reloads the backup and recordings folder paths. Fails soft.
@@ -1865,6 +1871,46 @@ class _SetupScreenState extends State<SetupScreen> {
       _paths = null;
     }
     if (mounted) setState(() {});
+  }
+
+  /// One detected checklist item: (done, detail). done is null
+  /// when the backend could not check it. When the list has not
+  /// run yet, the tile says so instead of showing a stale tick.
+  ({bool? done, String detail}) _check(String id) {
+    final checks = widget.state.setupChecks;
+    if (checks == null) return (done: null, detail: 'The check has not run yet. Tap Re-check below.');
+    final found = checks.where((c) => c.id == id).toList();
+    if (found.isEmpty) return (done: null, detail: 'The check did not report this item.');
+    return (done: found.first.done, detail: found.first.detail);
+  }
+
+  /// The headset items, with the live connection overlaid: the
+  /// backend check runs on adb, which a phone does not have, so
+  /// on Android the app's own connected headset is the evidence.
+  /// A headset connected and authorized here means Developer Mode
+  /// is on and USB debugging is allowed; a headset waiting for
+  /// the Allow tap means Developer Mode is on but debugging is
+  /// not allowed yet. Otherwise the backend's answer stands.
+  ({bool? done, String detail}) _effective(String id) {
+    final dev = widget.state.selectedDevice;
+    if (dev != null && (id == 'dev_mode' || id == 'usb_debugging')) {
+      if (dev.state == 'device') {
+        if (id == 'dev_mode') return (done: true, detail: 'This headset is connected and authorized, so Developer Mode is on.');
+        return (done: true, detail: 'This headset is connected and authorized.');
+      }
+      if (dev.state == 'unauthorized') {
+        if (id == 'dev_mode') return (done: true, detail: 'The headset is asking to allow this computer, which only happens with Developer Mode on.');
+        return (done: false, detail: 'The headset is waiting for you. Put it on and tap Allow, and tick Always allow from this computer.');
+      }
+    }
+    return _check(id);
+  }
+
+  /// Re-runs the setup check now, with the spinner on.
+  Future<void> _refreshChecks() async {
+    setState(() => _checking = true);
+    await widget.state.refreshSetupChecks();
+    if (mounted) setState(() => _checking = false);
   }
 
   /// Opens a URL in the system browser. Failures are ignored.
@@ -1896,12 +1942,32 @@ class _SetupScreenState extends State<SetupScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('First run checklist', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  Row(children: [
+                    const Expanded(child: Text('First run checklist', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                    OutlinedButton.icon(
+                      onPressed: _checking ? null : _refreshChecks,
+                      icon: _checking
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.refresh, size: 18),
+                      label: const Text('Re-check'),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  const Text('Checked against this computer when the app starts and whenever this page opens. Nothing here is ticked by hand, except the developer account, which ReOculus cannot see.', style: TextStyle(fontSize: 13)),
                   const SizedBox(height: 8),
-                  _CheckTile(title: '1. Create a free Meta developer account', body: 'This is the one Meta step. It cannot be done inside this app and you do not sign in here. Open developers.meta.com in your browser and create a free developer organisation.', done: _devMode, onChanged: (v) => setState(() => _devMode = v ?? false), onOpen: () => _openUrl('https://developers.meta.com')),
-                  _CheckTile(title: '2. Turn on Developer Mode on the headset', body: 'In the Meta Horizon phone app: Menu, Devices, your headset, Headset Settings, Developer Mode ON.', done: _devMode, onChanged: (v) => setState(() => _devMode = v ?? false)),
-                  _CheckTile(title: '3. Allow USB debugging', body: 'Plug the headset in. Put it on. When it asks "Allow USB debugging?", tap Allow and tick "Always allow from this computer".', done: _allowed, onChanged: (v) => setState(() => _allowed = v ?? false)),
-                  _CheckTile(title: '4. Linux USB permission (udev rule)', body: 'On Ubuntu, install the Android udev rules so the headset is not listed as "no permissions": sudo apt install android-sdk-platform-tools-common, then unplug and plug the headset back in.', done: _udev, onChanged: (v) => setState(() => _udev = v ?? false)),
+                  _CheckTile(
+                    title: '1. Create a free Meta developer account',
+                    body: 'This is the one Meta step. It cannot be done inside this app and you do not sign in here. Open developers.meta.com in your browser and create a free developer organisation.',
+                    done: _devAccountDone ? true : _check('dev_account').done,
+                    detail: _devAccountDone ? 'Ticked by you. ReOculus cannot check this itself.' : _check('dev_account').detail,
+                    manual: true,
+                    manualDone: _devAccountDone,
+                    onManualChanged: (v) => setState(() => _devAccountDone = v ?? false),
+                    onOpen: () => _openUrl('https://developers.meta.com'),
+                  ),
+                  _CheckTile(title: '2. Turn on Developer Mode on the headset', body: 'In the Meta Horizon phone app: Menu, Devices, your headset, Headset Settings, Developer Mode ON.', done: _effective('dev_mode').done, detail: _effective('dev_mode').detail),
+                  _CheckTile(title: '3. Allow USB debugging', body: 'Plug the headset in. Put it on. When it asks "Allow USB debugging?", tap Allow and tick "Always allow from this computer".', done: _effective('usb_debugging').done, detail: _effective('usb_debugging').detail),
+                  _CheckTile(title: '4. Linux USB permission (udev rule)', body: 'On Ubuntu, install the Android udev rules so the headset is not listed as "no permissions": sudo apt install android-sdk-platform-tools-common, then unplug and plug the headset back in.', done: _check('udev').done, detail: _check('udev').detail),
                 ]),
               ),
             ),
@@ -2042,7 +2108,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.31. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
+                  const Text('ReOculus 0.2.32. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),
@@ -2131,23 +2197,46 @@ class _CountdownRow extends StatelessWidget {
 }
 
 // ---- Setup checklist tile -----------------------------------------------
-/// One checklist row: a checkbox, a title, an explanation, and an
-/// optional button to open the linked page.
+/// One checklist row: a state icon, a title, an explanation, and
+/// the detection detail (the reason or the evidence, in plain
+/// language). The icon is the state: green check when the check
+/// found it done, an empty circle when it found it not done, a
+/// question mark when it could not be checked. Only the developer
+/// account has a manual checkbox: ReOculus cannot see Meta's
+/// website, so that one is ticked by the user.
 class _CheckTile extends StatelessWidget {
-  final String title, body;
-  final bool done;
-  final ValueChanged<bool?> onChanged;
+  final String title, body, detail;
+  final bool? done;
+  final bool manual;
+  final bool manualDone;
+  final ValueChanged<bool?>? onManualChanged;
   final VoidCallback? onOpen;
-  const _CheckTile({required this.title, required this.body, required this.done, required this.onChanged, this.onOpen});
+  const _CheckTile({required this.title, required this.body, required this.done, required this.detail, this.manual = false, this.manualDone = false, this.onManualChanged, this.onOpen});
   @override
   /// Builds one checklist row.
   Widget build(BuildContext context) => Card(
-        child: CheckboxListTile(
-          value: done,
-          onChanged: onChanged,
-          title: Text(title),
-          subtitle: Text(body),
-          secondary: onOpen == null ? null : IconButton(icon: const Icon(Icons.open_in_new), onPressed: onOpen),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: done == true
+                  ? const Icon(Icons.check_circle, color: Colors.green)
+                  : done == false
+                      ? const Icon(Icons.radio_button_unchecked)
+                      : const Icon(Icons.help_outline),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(body, style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 4),
+              Text(detail, style: const TextStyle(fontSize: 13)),
+            ])),
+            if (manual) Checkbox(value: manualDone, onChanged: onManualChanged),
+            if (onOpen != null) IconButton(icon: const Icon(Icons.open_in_new), onPressed: onOpen),
+          ]),
         ),
       );
 }

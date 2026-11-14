@@ -236,6 +236,10 @@ abstract class BackendService {
   /// Open a home app on the headset.
   Future<BackendResult> homeAppOpen(String serial, String id);
   // ---- Paths and mirror settings ----
+  /// The Setup checklist state, detected on this machine. Empty
+  /// when the backend cannot be reached; each item carries its
+  /// own done/detail, including "cannot check" as done null.
+  Future<List<SetupCheck>> setupStatus();
   /// Where backups and recordings live on this computer. Null when the
   /// backend cannot read its paths file.
   Future<PathsInfo?> pathsGet();
@@ -1053,6 +1057,13 @@ class RealBackend implements BackendService {
 
   @override
   // ---- Paths and mirror settings ----
+  Future<List<SetupCheck>> setupStatus() async {
+    final j = await _run(['setup', 'status']);
+    final list = (j['checks'] as List?) ?? [];
+    return list.map((e) => SetupCheck.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
   Future<PathsInfo?> pathsGet() async {
     final j = await _run(['paths', 'get']);
     if (j['ok'] != true) return null;

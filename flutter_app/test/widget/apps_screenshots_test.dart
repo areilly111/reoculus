@@ -276,6 +276,14 @@ class FakeBackend implements BackendService {
     if (name == #homeAppInstall) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Installed on the headset.'));
     if (name == #homeAppUninstall) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Removed from the headset.'));
     if (name == #homeAppOpen) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Opened on the headset.'));
+    if (name == #setupStatus) {
+      return Future<List<SetupCheck>>.value(const [
+        SetupCheck(id: 'dev_account', done: null, detail: 'ReOculus cannot check this. Your developer account lives on Meta\'s website, not on this computer. Tick the box yourself once you have made one.'),
+        SetupCheck(id: 'dev_mode', done: true, detail: 'A headset is connected and authorized, so Developer Mode is on.'),
+        SetupCheck(id: 'usb_debugging', done: true, detail: 'A headset is connected and authorized.'),
+        SetupCheck(id: 'udev', done: true, detail: 'The headset shows up in adb, so the USB permission is working.'),
+      ]);
+    }
     if (name == #pathsGet || name == #pathsSet || name == #pathsReset) {
       return Future<PathsInfo?>.value(const PathsInfo(
         backupRoot: '/home/lorem/quest-companion/backups',

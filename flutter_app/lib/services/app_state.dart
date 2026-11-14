@@ -24,6 +24,12 @@ class AppState extends ChangeNotifier {
   String? backendError; // set when Real mode cannot find/run questctl
   // PICKED 2026-11-12: C Dark VR Neon, blue instead of purple .
   DesignDirection design = DesignDirection.vrNeon;
+  /// The Setup checklist state, detected on this machine at
+  /// launch and re-checked when the Setup page opens. Null until
+  /// the first check finishes; the Setup screen shows "checking"
+  /// until then. Fails soft: a backend that cannot run the check
+  /// leaves the list empty, and the tiles say why.
+  List<SetupCheck>? setupChecks;
   QuestDevice? selectedDevice;
   List<QuestDevice> devices = [];
   DeviceInfo? deviceInfo;
@@ -205,6 +211,7 @@ class AppState extends ChangeNotifier {
       }
       notifyListeners();
       await refreshDevices();
+      await refreshSetupChecks();
       return;
     }
     backendPath = path ?? backendPath;
@@ -223,6 +230,7 @@ class AppState extends ChangeNotifier {
     await loadDeviceProfiles();
     notifyListeners();
     await refreshDevices();
+    await refreshSetupChecks();
   }
 
   /// Point the app at a different questctl path (from Setup).
@@ -310,6 +318,21 @@ class AppState extends ChangeNotifier {
     iconCache[package] = icon;
     notifyListeners();
     return icon;
+  }
+
+  // ---- Setup checklist ----
+  /// Re-check what is already set up on this machine (developer
+  /// account, Developer Mode, USB debugging, udev). Runs at
+  /// launch from initBackend and again when the Setup page opens.
+  /// Fails soft: on error the list is left as it was, and the
+  /// Setup screen says the check could not run.
+  Future<void> refreshSetupChecks() async {
+    try {
+      setupChecks = await _backend.setupStatus();
+    } catch (_) {
+      // Leave the previous list (or null) in place.
+    }
+    notifyListeners();
   }
 
   // ---- Devices ----

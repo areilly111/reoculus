@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, headset_config, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, steamvr, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
+use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, headset_config, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, setup_checks, singularity, singularity_settings, snapshot, steamvr, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -60,6 +60,9 @@ enum Commands {
     Singularity(SingularityArgs),
     /// Named whole-headset snapshots (device backup + profile).
     Snapshot(SnapshotArgs),
+    /// Setup checklist state: what is already set up on this
+    /// machine, detected live instead of ticked by hand.
+    Setup(SetupArgs),
 }
 
 #[derive(Args)]
@@ -516,6 +519,18 @@ enum UxpCmd {
         #[arg(long)]
         value: String,
     },
+}
+
+#[derive(Args)]
+struct SetupArgs {
+    #[command(subcommand)]
+    cmd: SetupCmd,
+}
+#[derive(Subcommand)]
+enum SetupCmd {
+    /// Check the real system state for every Setup checklist item
+    /// (developer account, Developer Mode, USB debugging, udev).
+    Status,
 }
 
 #[derive(Args)]
@@ -1503,6 +1518,9 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 snapshot::delete_snapshot(path)?;
                 Ok(json!({ "deleted": true, "snapshot": path }))
             }
+        },
+        Commands::Setup(a) => match &a.cmd {
+            SetupCmd::Status => Ok(serde_json::to_value(setup_checks::status(t.as_ref())?)?),
         },
         Commands::Devices(a) => match &a.cmd {
             DevicesCmd::List => {
