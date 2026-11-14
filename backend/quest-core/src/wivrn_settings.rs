@@ -177,6 +177,9 @@ pub struct ClientSettingsUpdate {
     pub forward_gamepad: Option<bool>,
 }
 
+/// Parse an on/off word into a bool: on, true, 1, and yes are true;
+/// off, false, 0, and no are false. Anything else is an error naming
+/// the word given.
 pub fn parse_on_off(s: &str) -> Result<bool> {
     match s.to_lowercase().as_str() {
         "on" | "true" | "1" | "yes" => Ok(true),

@@ -19,5 +19,9 @@ void main() {
     expect(find.text('Home'), findsWidgets);
     expect(find.text('Devices'), findsWidgets);
     expect(find.text('Apps'), findsWidgets);
+    // On this Linux test host the full nav shows, PC VR included.
+    // (The Android build hides it; that is checked on the phone,
+    // since Platform.isAndroid reads the real OS, not a test override.)
+    expect(find.text('PC VR'), findsWidgets);
   });
 }

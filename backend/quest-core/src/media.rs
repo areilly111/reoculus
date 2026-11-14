@@ -12,6 +12,10 @@ use std::process::{Command, Stdio};
 
 pub const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
+/// Take a screenshot on the headset (`screencap -p`) and save it as a
+/// PNG at `out`, creating the parent folder first. Errors when the
+/// headset returns bytes that are not a PNG (usually because it is
+/// asleep). Returns the path written.
 pub fn screenshot(t: &dyn AdbTransport, serial: &str, out: &Path) -> Result<PathBuf> {
     let png = t.exec_out(&Target::serial(serial), &["screencap", "-p"])?;
     if png.len() < 8 || png[..8] != PNG_MAGIC {
@@ -73,6 +77,8 @@ pub fn record(t: &dyn AdbTransport, serial: &str, out: &Path, seconds: u32) -> R
     })
 }
 
+/// One-shot logcat dump from the headset: the recent log lines as text.
+/// For a live stream use the CLI `logcat --follow` path instead.
 pub fn logcat_dump(t: &dyn AdbTransport, serial: &str) -> Result<Vec<String>> {
     t.logcat_dump(&Target::serial(serial))
 }

@@ -6,6 +6,8 @@
 // `headsetModel` is the backend-classified slug (quest1, quest2,
 // quest3, quest3s, questpro, unknown); use headsetDisplayName for
 // the name shown to the user, it falls back to the raw model.
+/// Friendly name for a headset model slug (quest1 becomes Quest 1).
+/// Unknown slugs fall back to the raw model string.
 String headsetDisplayName(String headsetModel, String model) {
   switch (headsetModel) {
     case 'quest1':
@@ -23,6 +25,9 @@ String headsetDisplayName(String headsetModel, String model) {
   }
 }
 
+// ---- Headsets ----
+/// One headset adb can see: its serial, state, model and how it is
+/// connected (usb or wifi).
 class QuestDevice {
   final String serial;
   final String state; // device | unauthorized | offline
@@ -31,6 +36,8 @@ class QuestDevice {
   final String headsetModel; // quest1, quest2, ... unknown
   final String transport; // usb | wifi
   const QuestDevice({required this.serial, required this.state, required this.model, this.device = '', this.headsetModel = 'unknown', required this.transport});
+  /// Name shown in the UI: the friendly model name, or the raw model
+  /// when unknown.
   String get displayName => headsetDisplayName(headsetModel, model);
   factory QuestDevice.fromJson(Map<String, dynamic> j) => QuestDevice(
         serial: (j['serial'] ?? '').toString(),
@@ -42,6 +49,7 @@ class QuestDevice {
       );
 }
 
+/// Full details for one headset: model, firmware, battery and storage.
 class DeviceInfo {
   final String model, serial, firmware, androidVersion, resolution, cpuAbi;
   final String headsetModel; // quest1, quest2, ... unknown
@@ -49,6 +57,16 @@ class DeviceInfo {
   final bool supportsHomeSwitcher; // false on Quest 1
   final int batteryLevel, batteryTempC, storageUsedGb, storageTotalGb;
   final bool charging;
+  /// Battery health from dumpsys ("Good", "Overheat", ...), '' when unknown.
+  final String batteryHealth;
+  /// Battery voltage in mV, 0 when unknown.
+  final int batteryVoltageMv;
+  /// Screen density in dpi, 0 when unknown.
+  final int densityDpi;
+  /// The headset's own Wi-Fi (wlan0) IPv4 address, when it has one.
+  /// Used to spot that a USB entry and a Wi-Fi entry are the same
+  /// headset, so the Devices screen can show one card, not two.
+  final String? wifiIp;
   const DeviceInfo({
     required this.model,
     required this.serial,
@@ -64,14 +82,48 @@ class DeviceInfo {
     required this.storageUsedGb,
     required this.storageTotalGb,
     required this.charging,
+    this.batteryHealth = '',
+    this.batteryVoltageMv = 0,
+    this.densityDpi = 0,
+    this.wifiIp,
   });
+  /// Name shown in the UI: the friendly model name, or the raw model
+  /// when unknown.
   String get displayName => headsetDisplayName(headsetModel, model);
+  /// True for a Quest 1. The Quest 1 tops out at 72 Hz and cannot run
+  /// Singularity or the home switcher.
   bool get isQuest1 => headsetModel == 'quest1';
+  /// Free space in GB.
+  int get storageFreeGb => storageTotalGb - storageUsedGb;
 }
 
+/// The headset's own config file (/sdcard/ReOculus/headset.cfg),
+/// read on connect so Linux and Android show the same custom name.
+/// The file holds ONLY the name: everything else (model, settings,
+/// apps) the app reads live from the headset, so there is nothing
+/// to sync. `present` is false when the headset has no custom name.
+class HeadsetConfig {
+  final bool present;
+  final String? name;
+  const HeadsetConfig({
+    required this.present,
+    this.name,
+  });
+  factory HeadsetConfig.fromJson(Map<String, dynamic> j) => HeadsetConfig(
+        present: j['present'] == true,
+        name: (j['name'] as String?)?.isEmpty == true ? null : j['name'] as String?,
+      );
+  static const absent = HeadsetConfig(present: false);
+}
+
+/// A JSON number as an int, or null when it is missing or not a number.
 int? _optInt(dynamic v) => v is num ? v.toInt() : null;
+/// A JSON value as a string, or null when it is missing.
 String? _optStr(dynamic v) => v == null ? null : v.toString();
 
+// ---- Apps ----
+/// One app installed on the headset, with its sizes and install details
+/// when the headset could report them.
 class QuestApp {
   final String package, label, version;
   final bool system;
@@ -123,6 +175,8 @@ class QuestApp {
         installer: _optStr(j['installer']),
         permissions: ((j['permissions'] as List?) ?? []).map((e) => e.toString()).toList(),
       );
+  /// Same app, with a new label and/or icon path. Used when the real
+  /// label or icon arrives after the list.
   QuestApp copyWith({String? label, String? iconPath}) => QuestApp(
         package: package,
         label: label ?? this.label,
@@ -212,6 +266,7 @@ class AppDetails {
       );
 }
 
+/// One step of a backup or restore: what it did, and whether it worked.
 class StepResult {
   final String item, message;
   final bool ok;
@@ -223,9 +278,12 @@ class StepResult {
       );
 }
 
+/// Parse a JSON list into StepResults. Missing or bad input becomes
+/// an empty list, never a crash.
 List<StepResult> _steps(dynamic v) =>
     ((v as List?) ?? []).map((e) => StepResult.fromJson(e as Map<String, dynamic>)).toList();
 
+// ---- Backups, library and gallery ----
 /// One app/save backup folder (`apps backup-list`).
 class BackupEntry {
   final String package, label, version, backupDate, path;
@@ -348,6 +406,7 @@ class LibraryEntry {
       );
 }
 
+/// One screenshot or recording in the gallery folder.
 class GalleryEntry {
   final String name, path, kind, modified;
   final int sizeBytes;
@@ -361,12 +420,15 @@ class GalleryEntry {
       );
 }
 
+/// The output of one shell command run on the headset.
 class ShellResult {
   final String stdout, stderr;
   final int code;
   const ShellResult({required this.stdout, required this.stderr, required this.code});
 }
 
+// ---- Root, controllers and updates ----
+/// How rooted the headset is: which method, and which root pieces are present.
 class RootStatus {
   final bool rooted, suPresent, magiskPresent, singularityPresent;
   final String method;
@@ -381,6 +443,9 @@ class RootStatus {
   static const notRooted = RootStatus(rooted: false, method: 'Not rooted', suPresent: false, magiskPresent: false, singularityPresent: false);
 }
 
+/// The paired controllers. names can be the last ones seen, not ones
+/// awake now: controllers sleep fast, so asleep says whether they were
+/// awake when last seen.
 class ControllersInfo {
   final List<String> names;
   final String note;
@@ -397,6 +462,8 @@ class ControllersInfo {
       );
 }
 
+/// Is the system updater disabled on the headset, and which updater
+/// packages are disabled.
 class UpdateBlockStatus {
   final bool blocked, rooted;
   final List<String> disabledPackages;
@@ -411,6 +478,8 @@ class UpdateBlockStatus {
       );
 }
 
+/// The result of the automatic Wi-Fi setup: did it connect, and on
+/// which IP.
 class WifiSetupResult {
   final bool connected;
   final String? ip, wirelessSerial, note;
@@ -423,6 +492,8 @@ class WifiSetupResult {
       );
 }
 
+/// Everything the Help screen shows about this setup: versions,
+/// backend path, root state, device info.
 class DebugInfo {
   final String questctlVersion, adbVersion, backendPath;
   final bool scrcpyAvailable;
@@ -440,6 +511,7 @@ class DebugInfo {
   });
 }
 
+/// One whole-headset backup on this computer.
 class DeviceBackupEntry {
   final String serial, backupDate, path;
   final int totalSizeBytes, appCount;
@@ -453,19 +525,26 @@ class DeviceBackupEntry {
       );
 }
 
+/// One file or folder on the headset.
 class QuestFile {
   final String name, path;
   final bool isDir;
   final int size;
-  const QuestFile({required this.name, required this.path, required this.isDir, required this.size});
+  /// Last-modified date from `ls -la`, as printed by the headset
+  /// (ISO date or "Nov 13 12:00"), '' when unknown.
+  final String modified;
+  const QuestFile({required this.name, required this.path, required this.isDir, required this.size, this.modified = ''});
   factory QuestFile.fromJson(Map<String, dynamic> j) => QuestFile(
         name: (j['name'] ?? '').toString(),
         path: (j['path'] ?? '').toString(),
         isDir: j['is_dir'] == true,
         size: (j['size'] is num) ? (j['size'] as num).toInt() : 0,
+        modified: (j['modified'] ?? '').toString(),
       );
 }
 
+/// A named settings profile: refresh rate, CPU/GPU level,
+/// resolution, guardian pause.
 class SettingProfile {
   final String name;
   final int refreshRate;
@@ -476,6 +555,8 @@ class SettingProfile {
   const SettingProfile({required this.name, required this.refreshRate, required this.cpuLevel, required this.gpuLevel, required this.resolution, required this.guardianPaused});
 }
 
+/// The result of one backend call: did it work, and the message
+/// to show.
 class BackendResult {
   final bool ok;
   final String message;
@@ -483,6 +564,8 @@ class BackendResult {
   const BackendResult({required this.ok, this.message = '', this.data = const {}});
 }
 
+/// One home launcher on the headset, and whether it is the one in
+/// use now.
 class HomeEntry {
   final String component, package, label;
   final bool isCurrent;
@@ -495,6 +578,8 @@ class HomeEntry {
       );
 }
 
+// ---- Snapshots and health ----
+/// One saved whole-headset snapshot on this computer.
 class SnapshotEntry {
   final String serial, name, createdDate, path;
   final int totalSizeBytes, appCount;
@@ -509,6 +594,8 @@ class SnapshotEntry {
       );
 }
 
+/// Battery, storage and uptime for one headset. Storage arrives in
+/// KiB; the Gb getters below convert it.
 class HealthInfo {
   final String serial, model, firmware;
   final int batteryLevel, batteryTempC, batteryVoltageMv;
@@ -517,9 +604,13 @@ class HealthInfo {
   final int sdcardTotalKb, sdcardUsedKb, sdcardFreeKb;
   final int dataTotalKb, dataUsedKb, dataFreeKb;
   final String? uptime, lastBackup;
+  /// Used sdcard space in GB (the backend reports KiB).
   int get sdcardUsedGb => (sdcardUsedKb / 1024 / 1024).round();
+  /// Total sdcard space in GB (the backend reports KiB).
   int get sdcardTotalGb => (sdcardTotalKb / 1024 / 1024).round();
+  /// Used data-partition space in GB (the backend reports KiB).
   int get dataUsedGb => (dataUsedKb / 1024 / 1024).round();
+  /// Total data-partition space in GB (the backend reports KiB).
   int get dataTotalGb => (dataTotalKb / 1024 / 1024).round();
   const HealthInfo({
     required this.serial,
@@ -544,6 +635,7 @@ class HealthInfo {
     final battery = (j['battery'] as Map?) ?? {};
     final sd = (j['storage_sdcard'] as Map?) ?? {};
     final data = (j['storage_data'] as Map?) ?? {};
+    // A JSON number as an int, or 0 when it is missing or not a number.
     int kb(dynamic v) => (v is num) ? v.toInt() : 0;
     final status = (battery['status'] ?? '').toString().toLowerCase();
     final plugged = (battery['plugged'] ?? '').toString();
@@ -569,6 +661,7 @@ class HealthInfo {
   }
 }
 
+/// One battery reading: when, what level, and whether it was charging.
 class BatterySample {
   final int time, level;
   final bool charging;
@@ -580,6 +673,7 @@ class BatterySample {
       );
 }
 
+/// How long one app spent in the foreground, and when it was last used.
 class AppUsage {
   final String package;
   final int totalForegroundMs;
@@ -592,6 +686,8 @@ class AppUsage {
       );
 }
 
+/// Battery level over time, plus the apps that used the most
+/// foreground time.
 class BatteryHistory {
   final String serial;
   final int batteryLevel;
@@ -613,6 +709,8 @@ class BatteryHistory {
   }
 }
 
+/// What an APK file on this computer contains: package, version,
+/// permissions, native libs, signature.
 class ApkAnalysis {
   final String path, file;
   final int fileSizeBytes;
@@ -673,6 +771,8 @@ class ApkAnalysis {
       );
 }
 
+/// One preflight check before rooting: its name, detail, and whether
+/// it passed.
 class PreflightCheck {
   final String name, detail;
   final bool ok;
@@ -699,6 +799,9 @@ class SingularityPreflight {
       );
 }
 
+// ---- Singularity downloads ----
+/// One Singularity file (Magisk, frida, hosts, and the rest): what it is,
+/// where it comes from, and whether it is already downloaded.
 class SingularityDownload {
   final String id, name, detail, source, version, onHeadset;
   final bool downloadable, downloaded;
@@ -720,6 +823,7 @@ class SingularityDownload {
       );
 }
 
+/// Is the frida server downloaded, pushed to the headset, and running.
 class FridaStatusInfo {
   final bool downloaded, pushed, running;
   final String? file, sha256;
@@ -735,6 +839,7 @@ class FridaStatusInfo {
       );
 }
 
+/// Is the ad-blocking hosts file downloaded and applied on the headset.
 class HostsStatusInfo {
   final bool downloaded, applied;
   final String? file, sha256;
@@ -752,6 +857,7 @@ class HostsStatusInfo {
       );
 }
 
+/// Is the system update blocked on the headset.
 class OtaStatusInfo {
   final bool blocked, updaterDisabled;
   final String? downloadUrl, updateServerUrl;
@@ -764,6 +870,7 @@ class OtaStatusInfo {
       );
 }
 
+/// One Singularity UXP setting: its key, label, and current value.
 class UxpSetting {
   final String key, label, detail;
   final String? value;
@@ -779,6 +886,8 @@ class UxpSetting {
       );
 }
 
+/// One downloadable home app: what it is, whether it is installed,
+/// and whether an update is waiting.
 class HomeAppStatus {
   final String id, name, package, detail, source;
   final bool installed, updateAvailable, downloaded;
@@ -802,6 +911,8 @@ class HomeAppStatus {
       );
 }
 
+/// Where backups and recordings live on this computer, and whether
+/// each is still the default.
 class PathsInfo {
   final String backupRoot, recordingsRoot, configFile;
   final bool backupRootIsDefault, recordingsRootIsDefault;
@@ -815,6 +926,8 @@ class PathsInfo {
       );
 }
 
+/// Saved mirror quality for USB and Wi-Fi, and whether the mirror
+/// auto-restarts.
 class MirrorSettings {
   final String usbQuality, wifiQuality;
   final bool autoRestart;
@@ -826,6 +939,8 @@ class MirrorSettings {
       );
 }
 
+// ---- WiVRn ----
+/// One PC game or app registered with WiVRn.
 class WivrnApp {
   final String file, name, exec, icon;
   const WivrnApp({required this.file, required this.name, required this.exec, required this.icon});
@@ -879,6 +994,8 @@ class WivrnClientSettings {
         forwardMouse: j['forward_mouse'] == true,
         forwardGamepad: j['forward_gamepad'] == true,
       );
+  /// Same settings, with the given fields replaced. Used by the PC VR
+  /// screen while editing.
   WivrnClientSettings copyWith({
     bool? available,
     String? package,

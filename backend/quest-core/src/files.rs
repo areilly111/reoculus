@@ -85,6 +85,8 @@ pub fn parse_ls_line(line: &str) -> Option<FileEntry> {
     })
 }
 
+/// List one folder on the headset with `ls -la`. Returns entries with
+/// full paths. Errors when the folder does not exist or cannot be read.
 pub fn list_files(t: &dyn AdbTransport, serial: &str, path: &str) -> Result<Vec<FileEntry>> {
     let out = t.shell(&Target::serial(serial), &format!("ls -la {path}"))?;
     if out.code != 0 {
@@ -110,6 +112,8 @@ pub fn list_files(t: &dyn AdbTransport, serial: &str, path: &str) -> Result<Vec<
     Ok(entries)
 }
 
+/// Copy one local file to the headset. Errors first when the local file
+/// does not exist, so a typo fails fast instead of mid-transfer.
 pub fn push(t: &dyn AdbTransport, serial: &str, local: &Path, remote: &str) -> Result<()> {
     if !local.exists() {
         return Err(Error(format!("local file not found: {}", local.display())));
@@ -137,7 +141,7 @@ pub fn delete(t: &dyn AdbTransport, serial: &str, remote: &str) -> Result<()> {
         )));
     }
     // Single-quote the path for the device shell (escape embedded quotes).
-    let quoted = format!("'{}'", clean.replace('\'', "'\\''"));
+    let quoted = shell_quote(clean);
     let out = t.shell(&Target::serial(serial), &format!("rm -rf -- {quoted}"))?;
     if out.code != 0 {
         return Err(Error(format!(
@@ -148,6 +152,81 @@ pub fn delete(t: &dyn AdbTransport, serial: &str, remote: &str) -> Result<()> {
     Ok(())
 }
 
+/// Rename (or move) a file or folder under /sdcard/. Same guards
+/// as delete: both paths under /sdcard/, no `..`, never /sdcard
+/// itself. The new name must not be empty.
+pub fn rename(
+    t: &dyn AdbTransport,
+    serial: &str,
+    old: &str,
+    new: &str,
+) -> Result<()> {
+    let old = old.trim();
+    let new = new.trim();
+    check_sdcard_path(old, "rename")?;
+    check_sdcard_path(new, "rename")?;
+    if new.is_empty() {
+        return Err(Error("the new name must not be empty".into()));
+    }
+    let out = t.shell(
+        &Target::serial(serial),
+        &format!("mv -- {} {}", shell_quote(old), shell_quote(new)),
+    )?;
+    if out.code != 0 {
+        return Err(Error(format!(
+            "rename failed: {}",
+            out.stderr.trim()
+        )));
+    }
+    Ok(())
+}
+
+/// Create a folder under /sdcard/ (parents included, like
+/// `mkdir -p`). Same guards as delete.
+pub fn mkdir(t: &dyn AdbTransport, serial: &str, remote: &str) -> Result<()> {
+    let clean = remote.trim();
+    check_sdcard_path(clean, "create folder")?;
+    let out = t.shell(
+        &Target::serial(serial),
+        &format!("mkdir -p -- {}", shell_quote(clean)),
+    )?;
+    if out.code != 0 {
+        return Err(Error(format!(
+            "create folder failed: {}",
+            out.stderr.trim()
+        )));
+    }
+    Ok(())
+}
+
+/// Shared guard for the destructive file ops: the path must be
+/// under /sdcard/ (never /sdcard itself) with no `..` segment.
+fn check_sdcard_path(path: &str, what: &str) -> Result<()> {
+    let clean = path.trim();
+    if clean == "/sdcard" || clean == "/sdcard/" {
+        return Err(Error(format!("refusing to {what} /sdcard itself")));
+    }
+    if !clean.starts_with("/sdcard/") {
+        return Err(Error(format!(
+            "refusing to {what} '{clean}': only paths under /sdcard/ are allowed"
+        )));
+    }
+    if clean.split('/').any(|part| part == "..") {
+        return Err(Error(format!(
+            "refusing to {what} '{clean}': '..' is not allowed in the path"
+        )));
+    }
+    Ok(())
+}
+
+/// Single-quote a path for the device shell, escaping embedded
+/// single quotes.
+fn shell_quote(path: &str) -> String {
+    format!("'{}'", path.replace('\'', "'\\''"))
+}
+
+/// Copy one file from the headset to this computer, creating the local
+/// parent folder first when needed.
 pub fn pull(t: &dyn AdbTransport, serial: &str, remote: &str, local: &Path) -> Result<()> {
     if let Some(parent) = local.parent() {
         if !parent.as_os_str().is_empty() {

@@ -124,6 +124,11 @@ fn pipewire_running() -> bool {
             .unwrap_or(false)
 }
 
+// ---- Server detection and config -----------------------------------------
+
+/// Detect the WiVRn server on this computer: native binary first, then
+/// Flatpak, then not installed. Returns which kind it is, its version,
+/// and where its config lives.
 pub fn detect() -> WivrnDetect {
     let native = native_server();
     let flat = flatpak_installed();
@@ -180,6 +185,8 @@ pub const KNOWN_KEYS: &[&str] = &[
     "hostname",
 ];
 
+/// Read the WiVRn server config as JSON. A missing config file reads as
+/// an empty object, not an error; a file that is not valid JSON is an error.
 pub fn read_config() -> Result<serde_json::Value> {
     let d = detect();
     let path = PathBuf::from(&d.config_path);
@@ -299,6 +306,11 @@ pub struct WivrnStatus {
     pub log_tail: Vec<String>,
 }
 
+// ---- Server status and control -------------------------------------------
+
+/// Whether the WiVRn server is running right now (PID file, or port
+/// 9757 listening), whether it is the active OpenXR runtime, and the
+/// tail of its log. Never errors; missing pieces just read as off.
 pub fn status() -> WivrnStatus {
     let pid = std::fs::read_to_string(pid_file())
         .ok()
@@ -554,10 +566,15 @@ fn legacy_declined_file() -> PathBuf {
     home().join(".config").join("quest-companion").join("wivrn-declined")
 }
 
+/// True when the user has declined PC VR setup for this headset,
+/// recorded as a marker file (the old shared marker file counts too).
 pub fn is_declined(serial: &str) -> bool {
     declined_file(serial).exists() || legacy_declined_file().exists()
 }
 
+/// Record (or clear) the user's PC VR decline for one headset.
+/// Declining only stops the offer; tapping Install later clears it and
+/// setup runs normally.
 pub fn set_declined(declined: bool, serial: &str) -> Result<String> {
     let f = declined_file(serial);
     if declined {
@@ -583,6 +600,9 @@ pub struct WivrnSetupState {
     pub matching: bool,
 }
 
+/// The whole first-run setup state in one call: headset client version
+/// and package, whether the matching server is installed on this
+/// computer, whether setup was declined, and whether client and server match.
 pub fn setup_state(t: &dyn AdbTransport, serial: &str) -> WivrnSetupState {
     let d = detect();
     let mut client_version = None;
@@ -639,6 +659,8 @@ fn adb_run(args: &[&str]) -> Result<String> {
     }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
+
+// ---- Headset client and server install -----------------------------------
 
 /// Download the matching GitHub client APK (26.9) and install it
 /// over ADB. Verifies the download is a real APK (>10 MB) first.

@@ -50,6 +50,9 @@ pub fn format_uptime(secs: u64) -> String {
     }
 }
 
+/// Headset health in one call: battery, storage on /data, uptime, and
+/// the device info from `device_info`. The battery reading is shared
+/// with `device_info`, not read twice.
 pub fn health(t: &dyn AdbTransport, serial: &str) -> Result<HealthInfo> {
     let target = Target::serial(serial);
     let info = device_info(t, serial)?;

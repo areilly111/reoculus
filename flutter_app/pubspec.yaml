@@ -1,7 +1,7 @@
 name: quest_companion
 description: "ReOculus - a clean, no-ads, no-account companion app for Meta Quest headsets. Linux desktop first, Android-ready."
 publish_to: "none"
-version: 0.2.25+27
+version: 0.2.26+28
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   file_picker: ^8.1.0
+  # Android only: where the bundled questctl binary is extracted to
+  # (the app's files dir) and where the headset's Wi-Fi address is saved.
+  path_provider: ^2.1.0
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +22,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # The Android arm64 questctl binary, built by
+    # backend/scripts/build-android.sh. Extracted to the app's files
+    # dir on first launch (see RealBackend.extractAndroidCli); the
+    # Linux AppImage bundles the x86_64 binary next to the app instead.
+    - assets/questctl-android-arm64

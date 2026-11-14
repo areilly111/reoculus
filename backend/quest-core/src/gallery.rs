@@ -34,10 +34,14 @@ fn is_media(p: &Path) -> Option<&'static str> {
     }
 }
 
+/// List every screenshot and recording saved in the default gallery
+/// folder on this computer. Files that are not media are skipped.
 pub fn list_gallery() -> Result<Vec<GalleryEntry>> {
     list_gallery_in(&gallery_root()?)
 }
 
+/// Same as `list_gallery`, but in the given root folder. Returns an
+/// empty list (not an error) when the folder does not exist.
 pub fn list_gallery_in(root: &Path) -> Result<Vec<GalleryEntry>> {
     let mut out = Vec::new();
     if !root.is_dir() {

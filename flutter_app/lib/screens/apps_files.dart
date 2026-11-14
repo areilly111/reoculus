@@ -1,3 +1,9 @@
+// Apps and Files screens.
+// Apps: apps installed on the headset (list or tiles), plus the Library
+// tab of local app backups, save backups, and imported APKs. Files:
+// the headset's shared storage browser, plus the Gallery of screenshots
+// and recordings saved on this computer. Also holds the APK analysis
+// dialog shown before any install.
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models.dart';
@@ -22,6 +28,7 @@ Future<bool> showApkAnalysis(BuildContext context, BackendService backend, Strin
     );
     return ok == true;
   }
+  /// Shortens a SHA-256 hash for display: first 32 characters plus an ellipsis.
   String shortHash(String h) => h.length > 32 ? '${h.substring(0, 32)}…' : h;
   final lines = <Widget>[
     Text('File: ${a.file} (${formatBytes(a.fileSizeBytes)})'),
@@ -59,6 +66,8 @@ Future<bool> showApkAnalysis(BuildContext context, BackendService backend, Strin
 // Two tabs: Apps (installed on the headset, with sizes) and Library
 // (app backups, save backups and imported APKs, all in the one
 // library folder on this computer).
+/// Apps screen: two tabs, Apps (installed on the headset) and Library
+/// (local backups and imported APKs).
 class AppsScreen extends StatefulWidget {
   final AppState state;
   const AppsScreen({required this.state, super.key});
@@ -77,11 +86,15 @@ class _AppsScreenState extends State<AppsScreen> {
   String _progressLabel = '';
 
   @override
+  /// Loads the installed apps and the library when the screen opens.
   void initState() {
     super.initState();
     _load();
   }
 
+  /// Reloads the installed apps from the headset and the library from
+  /// this computer. With no headset selected, only the library loads
+  /// and the loading spinner stops.
   Future<void> _load() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) {
@@ -94,8 +107,11 @@ class _AppsScreenState extends State<AppsScreen> {
     setState(() => _loading = false);
   }
 
+  /// The installed apps filtered by the search box (matches name or package).
   List<QuestApp> get _filtered => _apps.where((a) => _query.isEmpty || a.label.toLowerCase().contains(_query.toLowerCase()) || a.package.toLowerCase().contains(_query.toLowerCase())).toList();
 
+  /// Picks an APK on this computer, shows the APK analysis first, then
+  /// installs it on the headset. Split apps use .apks or .xapk.
   Future<void> _install() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -104,6 +120,7 @@ class _AppsScreenState extends State<AppsScreen> {
     final proceed = await showApkAnalysis(context, widget.state.backend, path);
     if (proceed != true) return;
     setState(() {
+      // Progress is a rough guess: the backend does not report install progress.
       _progress = 0.2;
       _progressLabel = 'Installing... please wait.';
     });
@@ -115,6 +132,8 @@ class _AppsScreenState extends State<AppsScreen> {
     await _load();
   }
 
+  /// Copies a picked APK into the library folder, so it can be
+  /// installed later without the original file.
   Future<void> _importApk() async {
     final path = await pathDialog(context, title: 'Import an APK into the library', hint: 'Pick an APK, .apks or .xapk file on this computer. It is copied into the library folder, so you can install it later without the original file.', extensions: const ['apk', 'apks', 'xapk']);
     if (path == null || path.isEmpty) return;
@@ -124,14 +143,21 @@ class _AppsScreenState extends State<AppsScreen> {
     await _load();
   }
 
-  String _sizeText(QuestApp a) {
+  /// Size parts for an app: APK size, plus total size when it differs.
+  /// The list view joins them on one line; tiles put each on its own
+  /// line so nothing ever truncates on a narrow tile.
+  List<String> _sizeParts(QuestApp a) {
     final parts = <String>[];
     if (a.apkSizeBytes != null) parts.add('APK ${formatBytes(a.apkSizeBytes!)}');
     if (a.totalSizeBytes != null && a.totalSizeBytes != a.apkSizeBytes) parts.add('Total ${formatBytes(a.totalSizeBytes!)}');
-    return parts.join('  •  ');
+    return parts;
   }
 
+  /// One-line size text for an app: APK size, plus total size when it differs.
+  String _sizeText(QuestApp a) => _sizeParts(a).join('  •  ');
+
   @override
+  /// Builds the Apps/Library tabs, list or tiles, with search and filters.
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -179,7 +205,7 @@ class _AppsScreenState extends State<AppsScreen> {
                         ? const EmptyState(icon: Icons.apps, title: 'No apps match', body: 'Try a different search, or turn off "My apps only" to see system apps.')
                         : widget.state.appsTiles
                             ? GridView.builder(
-                                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 220, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.78),
+                                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 220, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.80),
                                 itemCount: _filtered.length,
                                 itemBuilder: (c, i) {
                                   final a = _filtered[i];
@@ -196,7 +222,7 @@ class _AppsScreenState extends State<AppsScreen> {
                                             child: AppIconTile(
                                               state: widget.state,
                                               app: a,
-                                              size: 64,
+                                              size: 56,
                                               onIcon: (icon) {
                                                 if (icon.label.isNotEmpty && icon.label != a.label) {
                                                   final idx = _apps.indexWhere((x) => x.package == a.package);
@@ -209,11 +235,11 @@ class _AppsScreenState extends State<AppsScreen> {
                                           ),
                                           const SizedBox(height: 8),
                                           Text(a.label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                          Text('Version ${a.version}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
-                                          if (_sizeText(a).isNotEmpty) Text(_sizeText(a), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                                          Text('Version ${a.version}', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                                          for (final part in _sizeParts(a)) Text(part, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
                                           const Spacer(),
                                           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                            IconButton(icon: const Icon(Icons.play_arrow), tooltip: 'Launch', onPressed: () async {
+                                            IconButton(icon: const Icon(Icons.play_arrow), tooltip: 'Launch', iconSize: 20, padding: const EdgeInsets.all(4), constraints: const BoxConstraints(minWidth: 32, minHeight: 32), onPressed: () async {
                                               final r = await widget.state.backend.launchApp(widget.state.selectedDevice!.serial, a.package);
                                               if (mounted) showResult(context, r.ok, r.message);
                                             }),
@@ -269,10 +295,21 @@ class _AppsScreenState extends State<AppsScreen> {
     );
   }
 
+  // ---- Library ----------------------------------------------------------
+  /// Builds the Library tab: local backups and imported APKs, list or tiles.
   Widget _buildLibrary() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Expanded(child: Text('One folder on this computer holds every backup and imported APK. Delete here only deletes local files, never anything on the headset.')),
+        const SizedBox(width: 12),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, icon: Icon(Icons.view_list), label: Text('List')),
+            ButtonSegment(value: true, icon: Icon(Icons.grid_view), label: Text('Tiles')),
+          ],
+          selected: {widget.state.libraryTiles},
+          onSelectionChanged: (v) => widget.state.setLibraryTiles(v.first),
+        ),
         const SizedBox(width: 12),
         OutlinedButton.icon(onPressed: _importApk, icon: const Icon(Icons.add), label: const Text('Import APK')),
       ]),
@@ -280,56 +317,116 @@ class _AppsScreenState extends State<AppsScreen> {
       Expanded(
         child: _library.isEmpty
             ? const EmptyState(icon: Icons.folder_copy, title: 'Library is empty', body: 'Back up an app, or import an APK, and it will show up here.')
-            : ListView.builder(
-                itemCount: _library.length,
-                itemBuilder: (c, i) {
-                  final e = _library[i];
-                  final kindLabel = e.kind == 'save' ? 'Save backup' : e.kind == 'apk' ? 'Imported APK' : 'App backup';
-                  return Card(
-                    child: ListTile(
-                      leading: Icon(e.kind == 'save' ? Icons.save : e.kind == 'apk' ? Icons.file_present : Icons.backup, size: 32),
-                      title: Text('${e.label} ${e.version}'),
-                      subtitle: Text('$kindLabel  •  ${e.package}\n${e.dateAdded}  •  ${formatBytes(e.sizeBytes)}${e.hasData ? '  •  includes app data' : ''}'),
-                      isThreeLine: true,
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        if (e.kind == 'apk') ...[
-                          TextButton(
-                            onPressed: () async {
-                              final proceed = await showApkAnalysis(context, widget.state.backend, e.path);
-                              if (proceed != true) return;
-                              final serial = widget.state.selectedDevice?.serial;
-                              if (serial == null) return;
-                              final r = await widget.state.backend.installApk(serial, e.path);
-                              if (mounted) showResult(context, r.ok, r.message);
-                            },
-                            child: const Text('Install'),
+            : widget.state.libraryTiles
+                ? GridView.builder(
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 220, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.0),
+                    itemCount: _library.length,
+                    itemBuilder: (c, i) {
+                      final e = _library[i];
+                      final kindLabel = e.kind == 'save' ? 'Save backup' : e.kind == 'apk' ? 'Imported APK' : 'App backup';
+                      return Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () => _primaryLibraryAction(e),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                              Center(child: LibraryIconTile(state: widget.state, entry: e, size: 56)),
+                              const SizedBox(height: 6),
+                              Text('${e.label} ${e.version}', maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Text(kindLabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                              Text(formatBytes(e.sizeBytes), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                              const SizedBox(height: 4),
+                              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                if (e.kind == 'apk')
+                                  TextButton(onPressed: () => _installLibraryEntry(e), child: const Text('Install'))
+                                else
+                                  TextButton(onPressed: () => _restoreLibraryEntry(e), child: const Text('Restore')),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: 'Delete from this computer',
+                                  onPressed: () => _deleteLibraryEntry(e),
+                                ),
+                              ]),
+                            ]),
                           ),
-                        ],
-                        if (e.kind != 'apk')
-                          TextButton(
-                            onPressed: () => _restoreLibraryEntry(e),
-                            child: const Text('Restore'),
-                          ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          tooltip: 'Delete from this computer',
-                          onPressed: () async {
-                            final yes = await confirmDialog(context, title: 'Delete ${e.label}?', body: 'This deletes the backup from this computer only. The app on the headset is not touched.', confirmLabel: 'Delete', destructive: true);
-                            if (!yes) return;
-                            final r = await widget.state.backend.deleteLibraryEntry(e.path);
-                            if (mounted) showResult(context, r.ok, r.message);
-                            await _load();
-                          },
                         ),
-                      ]),
-                    ),
-                  );
-                },
-              ),
+                      );
+                    },
+                  )
+                : ListView.builder(
+                    itemCount: _library.length,
+                    itemBuilder: (c, i) {
+                      final e = _library[i];
+                      final kindLabel = e.kind == 'save' ? 'Save backup' : e.kind == 'apk' ? 'Imported APK' : 'App backup';
+                      return Card(
+                        child: ListTile(
+                          leading: LibraryIconTile(state: widget.state, entry: e, size: 40),
+                          title: Text('${e.label} ${e.version}'),
+                          subtitle: Text('$kindLabel  •  ${e.package}\n${e.dateAdded}  •  ${formatBytes(e.sizeBytes)}${e.hasData ? '  •  includes app data' : ''}'),
+                          isThreeLine: true,
+                          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (e.kind == 'apk') ...[
+                              TextButton(
+                                onPressed: () => _installLibraryEntry(e),
+                                child: const Text('Install'),
+                              ),
+                            ],
+                            if (e.kind != 'apk')
+                              TextButton(
+                                onPressed: () => _restoreLibraryEntry(e),
+                                child: const Text('Restore'),
+                              ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              tooltip: 'Delete from this computer',
+                              onPressed: () => _deleteLibraryEntry(e),
+                            ),
+                          ]),
+                        ),
+                      );
+                    },
+                  ),
       ),
     ]);
   }
 
+  /// Primary action for a library entry: Install for an imported
+  /// APK (with the APK analysis first), Restore for a backup or
+  /// a save backup. Used by a tile tap; the list row buttons call
+  /// the same two flows directly.
+  Future<void> _primaryLibraryAction(LibraryEntry e) async {
+    if (e.kind == 'apk') {
+      await _installLibraryEntry(e);
+    } else {
+      await _restoreLibraryEntry(e);
+    }
+  }
+
+  /// Installs a library APK on the headset, after the APK analysis dialog.
+  Future<void> _installLibraryEntry(LibraryEntry e) async {
+    final proceed = await showApkAnalysis(context, widget.state.backend, e.path);
+    if (proceed != true) return;
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    final r = await widget.state.backend.installApk(serial, e.path);
+    if (mounted) showResult(context, r.ok, r.message);
+  }
+
+  /// Deletes a library entry from this computer only. Nothing on the
+  /// headset is touched.
+  Future<void> _deleteLibraryEntry(LibraryEntry e) async {
+    final yes = await confirmDialog(context, title: 'Delete ${e.label}?', body: 'This deletes the backup from this computer only. The app on the headset is not touched.', confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    final r = await widget.state.backend.deleteLibraryEntry(e.path);
+    if (mounted) showResult(context, r.ok, r.message);
+    await _load();
+  }
+
+  /// Restores a library backup or save backup onto the headset. Runs a
+  /// dry run first, asks whether to restore app data too (needs root),
+  /// then asks for confirmation.
   Future<void> _restoreLibraryEntry(LibraryEntry e) async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -394,6 +491,8 @@ class _AppsScreenState extends State<AppsScreen> {
   /// the button itself, so it always opens in the right place.
   Widget _appMenuButton(QuestApp a) => PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
+        iconSize: 20,
+        padding: const EdgeInsets.all(4),
         tooltip: 'More actions',
         itemBuilder: (_) => _appMenuItems(a),
         onSelected: (value) => _doAppAction(a, value),
@@ -418,6 +517,8 @@ class _AppsScreenState extends State<AppsScreen> {
     await _doAppAction(a, value);
   }
 
+  /// Runs one menu action for an app: info, backup, save, restore,
+  /// force stop, clear data, remove system app, or uninstall.
   Future<void> _doAppAction(QuestApp a, String action) async {
     final serial = widget.state.selectedDevice?.serial ?? '';
     switch (action) {
@@ -508,6 +609,7 @@ class _AppsScreenState extends State<AppsScreen> {
     if (picked != null) await _restoreLibraryEntry(picked);
   }
 
+  /// Opens the app detail dialog for one app.
   void _showAppDetail(QuestApp a) {
     final serial = widget.state.selectedDevice?.serial ?? '';
     final state = widget.state;
@@ -521,6 +623,9 @@ class _AppsScreenState extends State<AppsScreen> {
 }
 
 // ---- App detail dialog (loads details lazily) -----------------------------
+/// App detail dialog: sizes, versions, permissions, and the backup,
+/// force stop, clear data, and uninstall actions. Details load lazily
+/// from the headset when the dialog opens.
 class _AppDetailDialog extends StatefulWidget {
   final QuestApp app;
   final String serial;
@@ -538,11 +643,14 @@ class _AppDetailDialogState extends State<_AppDetailDialog> {
   bool _busy = false;
 
   @override
+  /// Loads the app details from the headset when the dialog opens.
   void initState() {
     super.initState();
     _loadDetails();
   }
 
+  /// Fetches sizes, install dates, and permissions for this app from
+  /// the headset. Shows a fallback if the headset does not answer.
   Future<void> _loadDetails() async {
     final d = await widget.state.backend.appDetails(widget.serial, widget.app.package);
     if (mounted) {
@@ -553,9 +661,11 @@ class _AppDetailDialogState extends State<_AppDetailDialog> {
     }
   }
 
+  /// Formats a byte count, or "Unknown" when the headset did not report one.
   String _bytes(int? v) => v == null ? 'Unknown' : formatBytes(v);
 
   @override
+  /// Builds the detail dialog, with a loading bar until the details arrive.
   Widget build(BuildContext context) {
     final a = widget.app;
     final d = _details;
@@ -691,6 +801,8 @@ class _AppDetailDialogState extends State<_AppDetailDialog> {
 }
 
 // ---- Files ----------------------------------------------------------------
+/// Files screen: the headset's shared storage browser, plus the Gallery
+/// tab of screenshots and recordings saved on this computer.
 class FilesScreen extends StatefulWidget {
   final AppState state;
   const FilesScreen({required this.state, super.key});
@@ -708,11 +820,14 @@ class _FilesScreenState extends State<FilesScreen> {
   bool _tiles = false; // false = list (default), true = tiles (grid)
 
   @override
+  /// Loads the current folder (or the gallery) when the screen opens.
   void initState() {
     super.initState();
     _load();
   }
 
+  /// Loads the current folder from the headset, or the local gallery
+  /// when that tab is active. With no headset, the file list stays empty.
   Future<void> _load() async {
     final serial = widget.state.selectedDevice?.serial;
     if (_tab == 1) {
@@ -729,11 +844,13 @@ class _FilesScreenState extends State<FilesScreen> {
     setState(() => _loading = false);
   }
 
+  /// Opens a folder by path, making sure the path ends with a slash.
   void _go(String p) {
     setState(() => _path = p.endsWith('/') ? p : '$p/');
     _load();
   }
 
+  /// Goes up one folder. Does nothing at the top (/sdcard/).
   void _up() {
     if (_path == '/sdcard/') return;
     final trimmed = _path.substring(0, _path.length - 1);
@@ -744,6 +861,7 @@ class _FilesScreenState extends State<FilesScreen> {
   List<String> get _crumbs => _path.split('/').where((s) => s.isNotEmpty).toList();
 
   @override
+  /// Builds the Files/Gallery tabs, breadcrumbs, and the list or tiles view.
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -770,7 +888,6 @@ class _FilesScreenState extends State<FilesScreen> {
             IconButton(icon: const Icon(Icons.arrow_upward), tooltip: 'Go up one folder', onPressed: _path == '/sdcard/' ? null : _up),
             Expanded(
               child: Wrap(spacing: 4, children: [
-                ActionChip(label: const Text('sdcard'), onPressed: () => _go('/sdcard/')),
                 for (var i = 0; i < _crumbs.length; i++)
                   ActionChip(label: Text(_crumbs[i]), onPressed: () {
                     _go('/${_crumbs.sublist(0, i + 1).join('/')}/');
@@ -778,6 +895,8 @@ class _FilesScreenState extends State<FilesScreen> {
               ]),
             ),
             FilledButton.icon(onPressed: _upload, icon: const Icon(Icons.upload), label: const Text('Upload here')),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(onPressed: _newFolder, icon: const Icon(Icons.create_new_folder), label: const Text('New folder')),
             const SizedBox(width: 12),
             SegmentedButton<bool>(
               segments: const [
@@ -816,14 +935,14 @@ class _FilesScreenState extends State<FilesScreen> {
                                           const SizedBox(height: 8),
                                           Text(f.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
                                           Text(f.isDir ? 'Folder' : formatBytes(f.size), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                                          if (f.modified.isNotEmpty) Text(f.modified, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
                                           const Spacer(),
-                                          if (!f.isDir)
-                                            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                              IconButton(icon: const Icon(Icons.download), tooltip: 'Download to this computer', onPressed: () => _download(f)),
-                                              IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete from the headset', onPressed: () => _delete(f)),
-                                            ])
-                                          else
-                                            const Center(child: Icon(Icons.chevron_right)),
+                                          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                            if (!f.isDir) IconButton(icon: const Icon(Icons.download), tooltip: 'Download to this computer', onPressed: () => _download(f)),
+                                            IconButton(icon: const Icon(Icons.edit), tooltip: 'Rename', onPressed: () => _renameFile(f)),
+                                            IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete from the headset', onPressed: () => _delete(f)),
+                                            if (f.isDir) const Icon(Icons.chevron_right),
+                                          ]),
                                         ]),
                                       ),
                                     ),
@@ -838,23 +957,26 @@ class _FilesScreenState extends State<FilesScreen> {
                                 child: ListTile(
                                   leading: Icon(f.isDir ? Icons.folder : Icons.insert_drive_file, size: 32),
                                   title: Text(f.name),
-                                  subtitle: Text(f.isDir ? 'Folder' : formatBytes(f.size)),
-                                  trailing: f.isDir
-                                      ? const Icon(Icons.chevron_right)
-                                      : IconButton(icon: const Icon(Icons.download), tooltip: 'Download to this computer', onPressed: () => _download(f)),
+                                  subtitle: Text(_fileDetail(f)),
+                                  trailing: PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert),
+                                    tooltip: 'Actions for ${f.name}',
+                                    onSelected: (v) {
+                                      if (v == 'download') _download(f);
+                                      if (v == 'rename') _renameFile(f);
+                                      if (v == 'delete') _delete(f);
+                                    },
+                                    itemBuilder: (c) => [
+                                      if (!f.isDir) const PopupMenuItem(value: 'download', child: Text('Download to this computer')),
+                                      const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                    ],
+                                  ),
                                   onTap: f.isDir ? () => _go(f.path) : () => _download(f),
-                                  onLongPress: f.isDir ? null : () => _delete(f),
                                 ),
                               );
                             },
                           ),
-          ),
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('Game data (OBB)'),
-              subtitle: Text('Game data files go in Android/obb, in a folder named after the app. File names must match the game version, for example main.123.com.game.app.obb.'),
-            ),
           ),
         ] else
           Expanded(child: _buildGallery()),
@@ -862,6 +984,8 @@ class _FilesScreenState extends State<FilesScreen> {
     );
   }
 
+  /// Builds the Gallery tab: screenshots and recordings saved in
+  /// ~/quest-recordings/ on this computer.
   Widget _buildGallery() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Screenshots and recordings saved on this computer (~/quest-recordings/). Screenshots are PNG, recordings are MP4 video without sound.'),
@@ -926,11 +1050,13 @@ class _FilesScreenState extends State<FilesScreen> {
     ]);
   }
 
+  /// Uploads a picked file from this computer into the folder showing.
   Future<void> _upload() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
     final local = await pathDialog(context, title: 'Upload a file', hint: 'Type the full path of the file on this computer to send to the headset.');
     if (local == null || local.isEmpty) return;
+    // Progress is a rough guess: the backend does not report transfer progress.
     setState(() => _progress = 0.5);
     final r = await widget.state.backend.pushFile(serial, local, '$_path${local.split('/').last}');
     setState(() => _progress = null);
@@ -939,15 +1065,18 @@ class _FilesScreenState extends State<FilesScreen> {
     await _load();
   }
 
+  /// Downloads a headset file to /tmp on this computer.
   Future<void> _download(QuestFile f) async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
+    // Progress is a rough guess: the backend does not report transfer progress.
     setState(() => _progress = 0.5);
     final r = await widget.state.backend.pullFile(serial, f.path, '/tmp/${f.name}');
     setState(() => _progress = null);
     if (mounted) showResult(context, r.ok, r.message);
   }
 
+  /// Deletes a file from the headset, after confirming. Cannot be undone.
   Future<void> _delete(QuestFile f) async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -959,5 +1088,77 @@ class _FilesScreenState extends State<FilesScreen> {
       widget.state.log('Deleted ${f.name}');
       await _load();
     }
+  }
+
+  /// One-line detail for the list view: size or Folder, plus the
+  /// last-modified date when the headset reported one.
+  String _fileDetail(QuestFile f) {
+    final base = f.isDir ? 'Folder' : formatBytes(f.size);
+    return f.modified.isEmpty ? base : '$base  •  ${f.modified}';
+  }
+
+  /// Renames a file or folder in place. The new name stays in the
+  /// same folder; a '/' in it is refused.
+  Future<void> _renameFile(QuestFile f) async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    final controller = TextEditingController(text: f.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Rename ${f.name}'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'New name',
+            helperText: 'The file stays in this folder.',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, controller.text.trim()), child: const Text('Rename')),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || name == f.name) return;
+    if (name.contains('/')) {
+      if (mounted) showResult(context, false, 'The name cannot contain a /.');
+      return;
+    }
+    final parent = f.path.substring(0, f.path.length - f.name.length);
+    final r = await widget.state.backend.renameFile(serial, f.path, '$parent$name');
+    if (mounted) showResult(context, r.ok, r.message);
+    if (r.ok) await _load();
+  }
+
+  /// Creates a folder inside the current folder.
+  Future<void> _newFolder() async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('New folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Folder name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, controller.text.trim()), child: const Text('Create')),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    if (name.contains('/')) {
+      if (mounted) showResult(context, false, 'The folder name cannot contain a /.');
+      return;
+    }
+    final r = await widget.state.backend.makeDir(serial, '$_path$name');
+    if (mounted) showResult(context, r.ok, r.message);
+    if (r.ok) await _load();
   }
 }

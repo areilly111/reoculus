@@ -95,6 +95,10 @@ fn dir_size(path: &Path) -> u64 {
     total
 }
 
+/// Save a named snapshot of the whole headset: runs a full device
+/// backup, then writes a snapshot.json in that backup folder naming it,
+/// so it can be found and restored later. `profile` is optional and is
+/// just recorded in the manifest.
 pub fn create_snapshot(
     t: &dyn AdbTransport,
     serial: &str,
@@ -131,6 +135,8 @@ pub fn create_snapshot(
     })
 }
 
+/// Read the snapshot.json of one snapshot folder. Errors when the
+/// folder has no snapshot file or it is not valid JSON.
 pub fn read_snapshot_manifest(dir: &Path) -> Result<SnapshotManifest> {
     let text = std::fs::read_to_string(dir.join("snapshot.json")).map_err(|e| {
         Error(format!(

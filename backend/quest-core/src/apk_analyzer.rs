@@ -217,6 +217,11 @@ fn maybe_unbundle(path: &Path) -> Result<(PathBuf, Option<tempfile::TempDir>, Op
     ))
 }
 
+/// Read one APK file and report what it is: label, package, version,
+/// SDK levels, permissions, features, ABIs, size breakdown, and SHA-256
+/// hashes. A .apks or .xapk bundle is unpacked first and its largest
+/// inner APK is analyzed. Errors when the file is missing or aapt
+/// cannot read it (a corrupt APK, or a resource format aapt cannot parse).
 pub fn analyze_apk(path: &Path) -> Result<ApkAnalysis> {
     if !path.is_file() {
         return Err(Error(format!("no such file: {}", path.display())));

@@ -319,6 +319,15 @@ pub fn friendly_install_error(text: &str) -> String {
     format!("{code}{hint}")
 }
 
+// ---------------------------------------------------------------------------
+// Listing apps
+// ---------------------------------------------------------------------------
+
+/// List the apps on the headset. `third_party` true lists only
+/// user-installed apps, false lists everything including system apps.
+/// Returns the light list (no APK sizes, no icons); use
+/// `list_apps_with_icons` or `list_apps_with_details` when the UI needs
+/// more. Runs on the headset over ADB.
 pub fn list_apps(t: &dyn AdbTransport, serial: &str, third_party: bool) -> Result<Vec<AppInfo>> {
     list_apps_impl(t, serial, third_party, false, false)
 }
@@ -554,6 +563,9 @@ pub fn parse_pm_paths(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Full details for one installed app: every APK path (base plus splits),
+/// sizes, version, SDK levels, install and update dates, installer, and
+/// requested permissions. Errors when the package is not installed.
 pub fn app_details(t: &dyn AdbTransport, serial: &str, package: &str) -> Result<AppDetails> {
     let target = Target::serial(serial);
     // 1. All APK paths (base + splits).
@@ -1064,6 +1076,76 @@ fn best_effort_label(package: &str) -> String {
     package.rsplit('.').next().unwrap_or(package).to_string()
 }
 
+/// Get the real label and icon from a local APK file already on
+/// this computer (a backup folder's base.apk, or an imported APK).
+/// No headset, no ADB pull: the file is read in place. Shares the
+/// cache with [`app_icon`] (package+version under
+/// ~/.cache/quest-companion/icons/), the same badging parse, and
+/// the same zip-scan fallback for APKs aapt cannot parse
+/// (Beat Saber). Returns an error when the APK has no launcher
+/// icon at all; the caller falls back to initials, it does not
+/// invent an icon.
+pub fn local_apk_icon(apk: &Path, package: &str, version: &str) -> Result<AppIcon> {
+    if let Some((cached, label)) = cached_icon(package, version) {
+        return Ok(AppIcon {
+            package: package.to_string(),
+            label: if label.is_empty() { best_effort_label(package) } else { label },
+            version: version.to_string(),
+            icon_path: cached.to_string_lossy().into_owned(),
+            icon_file: cached
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "icon.png".into()),
+        });
+    }
+    let mut label = best_effort_label(package);
+    let icon_entry: Option<String> = match run_badging(apk) {
+        Ok(text) => {
+            let badging = parse_badging(&text);
+            if let Some(l) = badging.label.filter(|l| !l.is_empty()) {
+                label = l;
+            }
+            match pick_badging_icon(&badging.icons) {
+                Some(p) => Some(p),
+                None => {
+                    let file = File::open(apk)?;
+                    let mut zip = zip::ZipArchive::new(file)
+                        .map_err(|e| Error(format!("APK is not a valid zip: {e}")))?;
+                    scan_zip_for_icon(&mut zip)
+                }
+            }
+        }
+        Err(_) => {
+            let file = File::open(apk)?;
+            let mut zip = zip::ZipArchive::new(file)
+                .map_err(|e| Error(format!("APK is not a valid zip: {e}")))?;
+            scan_zip_for_icon(&mut zip)
+        }
+    };
+    let icon_entry = icon_entry.ok_or_else(|| {
+        Error(format!(
+            "{package} ({label}) has no launcher icon in its APK"
+        ))
+    })?;
+    let (bytes, ext) = extract_zip_entry(apk, &icon_entry)?;
+    if bytes.is_empty() {
+        return Err(Error(format!("icon '{icon_entry}' in {package} is empty")));
+    }
+    let cache_dir = icon_cache_dir(package, version)?;
+    std::fs::create_dir_all(&cache_dir)?;
+    let icon_name = format!("icon.{ext}");
+    let cached_path = cache_dir.join(&icon_name);
+    std::fs::write(&cached_path, &bytes)?;
+    std::fs::write(cache_dir.join("label.txt"), &label)?;
+    Ok(AppIcon {
+        package: package.to_string(),
+        label,
+        version: version.to_string(),
+        icon_path: cached_path.to_string_lossy().into_owned(),
+        icon_file: icon_entry,
+    })
+}
+
 /// Get the real label and icon for one app. Pulls base.apk to a temp
 /// file (deleted afterwards) and caches the icon under
 /// ~/.cache/quest-companion/icons/<package>/<version>/.
@@ -1127,76 +1209,30 @@ pub fn app_icon(
                 .unwrap_or_else(|| "icon.png".into()),
         });
     }
-    // 4. Pull base.apk to a temp file.
+    // 4. Pull base.apk to a temp file, then reuse the local-APK
+    // icon flow (cache, badging, zip-scan fallback).
     let dir = tempfile::tempdir().map_err(|e| Error(format!("cannot create temp dir: {e}")))?;
     let apk_local = dir.path().join("base.apk");
     t.pull(&target, &apk_path, &apk_local)
         .map_err(|e| Error(format!("could not pull the APK for {package}: {e}")))?;
-    // 5. Badging for label + icon file, with the zip-scan fallback.
-    let mut label = best_effort_label(package);
-    let icon_entry: Option<String> = match run_badging(&apk_local) {
-        Ok(text) => {
-            let badging = parse_badging(&text);
-            if let Some(l) = badging.label.filter(|l| !l.is_empty()) {
-                label = l;
-            }
-            // Note: the cache key uses the dumpsys version; the badging
-            // versionName agrees with it for every app checked live.
-            let picked = pick_badging_icon(&badging.icons);
-            match picked {
-                Some(p) => Some(p),
-                None => {
-                    // Badging worked but named no raster icon (e.g.
-                    // VrShell, icon=''): try the zip scan before
-                    // giving up.
-                    let file = File::open(&apk_local)?;
-                    let mut zip = zip::ZipArchive::new(file)
-                        .map_err(|e| Error(format!("APK is not a valid zip: {e}")))?;
-                    scan_zip_for_icon(&mut zip)
-                }
-            }
-        }
-        Err(_) => {
-            // aapt failed entirely (Beat Saber): zip scan fallback.
-            let file = File::open(&apk_local)?;
-            let mut zip = zip::ZipArchive::new(file)
-                .map_err(|e| Error(format!("APK is not a valid zip: {e}")))?;
-            scan_zip_for_icon(&mut zip)
-        }
-    };
-    let icon_entry = icon_entry.ok_or_else(|| {
-        Error(format!(
-            "{package} ({label}) has no launcher icon in its APK"
-        ))
-    })?;
-    // 6. Extract the icon and cache it.
-    let (bytes, ext) = extract_zip_entry(&apk_local, &icon_entry)?;
-    if bytes.is_empty() {
-        return Err(Error(format!("icon '{icon_entry}' in {package} is empty")));
-    }
-    let cache_dir = icon_cache_dir(package, &version)?;
-    std::fs::create_dir_all(&cache_dir)?;
-    let icon_name = format!("icon.{ext}");
-    let cached_path = cache_dir.join(&icon_name);
-    std::fs::write(&cached_path, &bytes)?;
-    std::fs::write(cache_dir.join("label.txt"), &label)?;
+    let icon = local_apk_icon(&apk_local, package, &version)?;
     let icon_path = if let Some(o) = out {
         if let Some(parent) = o.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
             }
         }
-        std::fs::copy(&cached_path, o)?;
+        std::fs::copy(&icon.icon_path, o)?;
         o.to_path_buf()
     } else {
-        cached_path
+        PathBuf::from(&icon.icon_path)
     };
     Ok(AppIcon {
         package: package.to_string(),
-        label,
+        label: icon.label,
         version,
         icon_path: icon_path.to_string_lossy().into_owned(),
-        icon_file: icon_entry,
+        icon_file: icon.icon_file,
     })
 }
 
@@ -1237,6 +1273,13 @@ pub fn unpack_bundle(path: &Path) -> Result<(tempfile::TempDir, Vec<PathBuf>)> {
     Ok((dir, apks))
 }
 
+// ---------------------------------------------------------------------------
+// Install and uninstall
+// ---------------------------------------------------------------------------
+
+/// Install one APK file. A .apks or .xapk bundle is unpacked first and
+/// its APKs installed together. `reinstall` true keeps the app's data
+/// when it is already installed. Returns the adb install output.
 pub fn install_apk(
     t: &dyn AdbTransport,
     serial: &str,
@@ -1257,6 +1300,9 @@ pub fn install_apk(
     t.install(&Target::serial(serial), &[apk.to_path_buf()], reinstall)
 }
 
+/// Install several APKs at once (the splits of one app), in a single adb
+/// install call. Every file must exist first; a missing file fails the
+/// whole call before anything is installed.
 pub fn install_multiple(
     t: &dyn AdbTransport,
     serial: &str,
@@ -1294,6 +1340,10 @@ pub fn uninstall_system(t: &dyn AdbTransport, serial: &str, package: &str) -> Re
     )))
 }
 
+/// Uninstall one app with `pm uninstall`. `keep_data` true passes `-k`,
+/// so the app's data stays on the headset and comes back if the app is
+/// reinstalled. User apps only; system apps need `uninstall_system`,
+/// which needs root.
 pub fn uninstall(
     t: &dyn AdbTransport,
     serial: &str,
@@ -1350,6 +1400,9 @@ pub fn launch(t: &dyn AdbTransport, serial: &str, package: &str) -> Result<Strin
     }
 }
 
+/// Stop one app right now with `am force-stop`. The app is not
+/// uninstalled and its data is kept; it just stops running until it is
+/// opened again.
 pub fn force_stop(t: &dyn AdbTransport, serial: &str, package: &str) -> Result<String> {
     let out = t.shell(&Target::serial(serial), &format!("am force-stop {package}"))?;
     if out.code != 0 {
@@ -1358,6 +1411,9 @@ pub fn force_stop(t: &dyn AdbTransport, serial: &str, package: &str) -> Result<S
     Ok(format!("force-stopped {package}"))
 }
 
+/// Wipe one app's data with `pm clear` (saved games, settings, logins).
+/// The app itself stays installed. This cannot be undone, so the UI
+/// asks first.
 pub fn clear_data(t: &dyn AdbTransport, serial: &str, package: &str) -> Result<String> {
     let out = t.shell(&Target::serial(serial), &format!("pm clear {package}"))?;
     let text = format!("{}{}", out.stdout, out.stderr);

@@ -19,6 +19,9 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
+/// The config folder on this computer: `~/.config/quest-companion`.
+/// Errors when HOME is not set. Note this only builds the path; it
+/// does not create the folder.
 pub fn config_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME")
         .map_err(|_| Error("HOME is not set; cannot locate config directory".into()))?;

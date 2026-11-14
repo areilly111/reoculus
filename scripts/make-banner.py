@@ -144,9 +144,15 @@ d.line([(cx - 20, top + 42), (cx - 5, top + 58), (cx + 22, top + 26)],
 # ---- text -------------------------------------------------------------------
 title_font = ImageFont.truetype(ROBOTO.format('Bold'), 118)
 tag_font = ImageFont.truetype(ROBOTO.format('Regular'), 34)
+support_font = ImageFont.truetype(ROBOTO.format('Medium'), 26)
+support_list_font = ImageFont.truetype(ROBOTO.format('Regular'), 24)
 pill_font = ImageFont.truetype(ROBOTO.format('Medium'), 24)
 d.text((70, 195), 'ReOculus', font=title_font, fill=TITLE_C)
-d.text((73, 330), 'Keep your Quest 2 alive on Linux.', font=tag_font, fill=CYAN_LT)
+d.text((73, 330), 'Keep your Quest alive on Linux.', font=tag_font, fill=CYAN_LT)
+# Supported headsets, to the right of the shield.
+d.text((190, 410), 'Supported headsets:', font=support_font, fill=TITLE_C)
+d.text((190, 445), 'Quest 1  •  Quest 2  •  Quest 3', font=support_list_font, fill=CYAN_LT)
+d.text((190, 478), 'Quest 3S  •  Quest Pro', font=support_list_font, fill=CYAN_LT)
 
 x = 70
 for label in ('No ads', 'No account', 'No telemetry'):

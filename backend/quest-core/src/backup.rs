@@ -78,6 +78,8 @@ pub fn folder_stamp(secs: u64) -> String {
     format!("{}-{}", &t[0..10].replace('-', ""), &t[11..19].replace(':', ""))
 }
 
+/// Current time as seconds since the Unix epoch. Used for backup folder
+/// names and manifest dates. Returns 0 only if the system clock is unreadable.
 pub fn now_unix() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -395,6 +397,9 @@ pub struct RestoreReport {
     pub steps: Vec<ManifestStep>,
 }
 
+/// Read the manifest.json of one app backup folder. Errors when the
+/// folder has no manifest (so it is not a backup) or the manifest is
+/// not valid JSON.
 pub fn read_manifest(dir: &Path) -> Result<BackupManifest> {
     let text = std::fs::read_to_string(dir.join("manifest.json")).map_err(|e| {
         Error(format!(
@@ -647,10 +652,15 @@ pub fn restore_backup(
 // List / delete
 // ---------------------------------------------------------------------------
 
+/// List every app backup in the default backup root. Folders without a
+/// readable manifest are skipped, not errors.
 pub fn list_backups() -> Result<Vec<BackupEntry>> {
     list_backups_in(&backup_root()?)
 }
 
+/// Same as `list_backups`, but in the given root folder instead of the
+/// default one. Returns an empty list (not an error) when the folder
+/// does not exist.
 pub fn list_backups_in(root: &Path) -> Result<Vec<BackupEntry>> {
     let mut out = Vec::new();
     if !root.is_dir() {
@@ -931,6 +941,8 @@ pub fn save_backup(
     })
 }
 
+/// Read the manifest.json of one save backup folder. Errors when the
+/// folder has no manifest or the manifest is not valid JSON.
 pub fn read_save_manifest(dir: &Path) -> Result<SaveManifest> {
     let text = std::fs::read_to_string(dir.join("manifest.json")).map_err(|e| {
         Error(format!("{} is not a save backup folder (no manifest.json: {e})", dir.display()))

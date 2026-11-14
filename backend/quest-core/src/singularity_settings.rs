@@ -259,11 +259,16 @@ pub fn parse_wc_lines(text: &str) -> u64 {
 // Small transport helpers
 // ---------------------------------------------------------------------------
 
+/// Run one shell command on the headset as root (`su -c`). Every rooted
+/// setting below goes through here, so a headset without root fails
+/// here with one clear error.
 fn shell_root(t: &dyn AdbTransport, serial: &str, cmd: &str) -> Result<CmdOutput> {
     t.shell(&Target::serial(serial), &format!("su -c \"{cmd}\""))
 }
 
 /// Read a global setting. None when it is unset.
+/// Read one rooted setting from the headset. None means the key is
+/// unset or could not be read, not an error.
 fn settings_get(t: &dyn AdbTransport, serial: &str, key: &str) -> Option<String> {
     let out = t
         .shell(&Target::serial(serial), &format!("settings get global {key}"))
@@ -272,6 +277,7 @@ fn settings_get(t: &dyn AdbTransport, serial: &str, key: &str) -> Option<String>
 }
 
 /// Write a global setting, then read it back to prove it stuck.
+/// Write one rooted setting on the headset, as root.
 fn settings_put(t: &dyn AdbTransport, serial: &str, key: &str, value: &str) -> Result<()> {
     t.shell(
         &Target::serial(serial),
@@ -287,6 +293,7 @@ fn settings_put(t: &dyn AdbTransport, serial: &str, key: &str, value: &str) -> R
 
 /// Delete a global setting (restores the stock default), then
 /// prove it is gone.
+/// Delete one rooted setting from the headset, as root.
 fn settings_delete(t: &dyn AdbTransport, serial: &str, key: &str) -> Result<()> {
     t.shell(
         &Target::serial(serial),
@@ -298,6 +305,8 @@ fn settings_delete(t: &dyn AdbTransport, serial: &str, key: &str) -> Result<()> 
     }
 }
 
+/// The installed version of one package on the headset, from `dumpsys
+/// package`, or None when the package is not installed or has no version.
 pub(crate) fn installed_version(t: &dyn AdbTransport, serial: &str, pkg: &str) -> Option<String> {
     let out = t
         .shell(&Target::serial(serial), &format!("dumpsys package {pkg}"))
@@ -309,6 +318,9 @@ pub(crate) fn installed_version(t: &dyn AdbTransport, serial: &str, pkg: &str) -
 // Downloads
 // ---------------------------------------------------------------------------
 
+/// Download the Frida server binary for the headset into the cache. The
+/// size must match the published size exactly, or the file is deleted
+/// and the download fails. The binary is marked executable on download.
 pub fn download_frida() -> Result<FridaDownload> {
     let dir = crate::singularity::cache_dir()?;
     let file = dir.join("frida-server");
@@ -331,10 +343,14 @@ pub fn download_frida() -> Result<FridaDownload> {
     })
 }
 
+/// Download the domain blocklist into the Singularity cache folder. A
+/// list with fewer than 10 domains is treated as a bad download and deleted.
 pub fn download_hosts() -> Result<HostsDownload> {
     download_hosts_with_cache(&crate::singularity::cache_dir()?)
 }
 
+/// Same as `download_hosts`, but into the given cache folder instead of
+/// the default one.
 pub fn download_hosts_with_cache(cache: &Path) -> Result<HostsDownload> {
     let file = cache.join("hosts");
     crate::singularity::curl(HOSTS_URL, &file)?;
@@ -462,6 +478,9 @@ pub fn downloads_list(t: &dyn AdbTransport, serial: &str) -> Result<Vec<Download
 // Frida server on the headset
 // ---------------------------------------------------------------------------
 
+/// Frida status in one call: whether the server binary is downloaded on
+/// this computer (with size and hash), whether it is pushed to the
+/// headset, and whether it is running there.
 pub fn frida_status(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
     let cache = crate::singularity::cache_dir()?;
     let file = cache.join("frida-server");
@@ -498,6 +517,9 @@ pub fn frida_status(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
     })
 }
 
+/// Copy the downloaded Frida server to the headset and mark it
+/// executable. Errors when Frida has not been downloaded yet, and
+/// verifies afterwards that it actually landed.
 pub fn frida_push(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
     let cache = crate::singularity::cache_dir()?;
     let file = cache.join("frida-server");
@@ -516,6 +538,9 @@ pub fn frida_push(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
     Ok(st)
 }
 
+/// Start the Frida server on the headset as root, in the background,
+/// then wait up to about 3 seconds for it to show as running. Already
+/// running is a success, not an error.
 pub fn frida_start(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
     let st0 = frida_status(t, serial)?;
     if !st0.pushed {
@@ -531,6 +556,7 @@ pub fn frida_start(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
         serial,
         &format!("nohup {FRIDA_REMOTE} >/data/local/tmp/frida-server.log 2>&1 &"),
     )?;
+    // Poll for up to about 3 s; the server takes a moment to come up.
     for _ in 0..6 {
         std::thread::sleep(std::time::Duration::from_millis(500));
         let st = frida_status(t, serial)?;
@@ -544,6 +570,8 @@ pub fn frida_start(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
     ))
 }
 
+/// Stop the Frida server on the headset (`pkill -x frida-server`).
+/// Errors when it is still running half a second later.
 pub fn frida_stop(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
     shell_root(t, serial, "pkill -x frida-server")?;
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -560,10 +588,15 @@ pub fn frida_stop(t: &dyn AdbTransport, serial: &str) -> Result<FridaStatus> {
 // Domain blocklist (hosts)
 // ---------------------------------------------------------------------------
 
+/// Blocklist status in one call, using the default cache folder:
+/// whether the list is downloaded, whether it is applied on the
+/// headset, and the rest.
 pub fn hosts_status(t: &dyn AdbTransport, serial: &str) -> Result<HostsStatus> {
     hosts_status_with_cache(t, serial, &crate::singularity::cache_dir()?)
 }
 
+/// Same as `hosts_status`, but the downloaded list is read from the
+/// given cache folder instead of the default one.
 pub fn hosts_status_with_cache(
     t: &dyn AdbTransport,
     serial: &str,
@@ -621,6 +654,9 @@ pub fn hosts_apply(t: &dyn AdbTransport, serial: &str) -> Result<HostsStatus> {
     hosts_apply_with_cache(t, serial, &crate::singularity::cache_dir()?)
 }
 
+/// Apply the downloaded blocklist on the headset: downloads it first
+/// when missing, backs up the module hosts file already there, then
+/// installs the combined list as root. Returns the fresh status.
 pub fn hosts_apply_with_cache(
     t: &dyn AdbTransport,
     serial: &str,
@@ -668,6 +704,8 @@ pub fn hosts_apply_with_cache(
     Ok(st)
 }
 
+/// Remove the applied blocklist from the headset. Errors when the
+/// blocklist file is still there afterwards.
 pub fn hosts_remove(t: &dyn AdbTransport, serial: &str) -> Result<HostsStatus> {
     shell_root(t, serial, &format!("rm -f {HOSTS_MODULE_FILE}"))?;
     let st = hosts_status(t, serial)?;
@@ -717,6 +755,9 @@ pub fn ota_set(t: &dyn AdbTransport, serial: &str, blocked: bool) -> Result<OtaS
 // Dock/UI (uxpatcher) settings
 // ---------------------------------------------------------------------------
 
+/// List the rooted UX settings (the toggles ReOculus can change, plus
+/// the read-only values shown for info), with each one's current value
+/// from the headset.
 pub fn uxp_list(t: &dyn AdbTransport, serial: &str) -> Result<Vec<UxpItem>> {
     let mut out = Vec::new();
     for (key, label, detail) in UXP_TOGGLES {
@@ -745,6 +786,9 @@ pub fn uxp_list(t: &dyn AdbTransport, serial: &str) -> Result<Vec<UxpItem>> {
     Ok(out)
 }
 
+/// Change one rooted UX setting. Only the toggle keys in the list can
+/// be changed, and the value must be 0 (off) or 1 (on). Anything else
+/// is refused with a plain message.
 pub fn uxp_set(t: &dyn AdbTransport, serial: &str, key: &str, value: &str) -> Result<UxpItem> {
     let found = UXP_TOGGLES.iter().find(|(k, _, _)| *k == key);
     let Some((_, label, detail)) = found else {

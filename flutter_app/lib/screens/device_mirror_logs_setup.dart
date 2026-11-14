@@ -1,3 +1,9 @@
+// Device, Mirror, Logs, and Setup screens.
+// Device and Settings: safe, dangerous, and rooted headset settings,
+// backups, snapshots, home launchers, and headset health. Mirror: the
+// scrcpy screen mirror with quality and recording. Logs: app logs,
+// headset logcat, terminal, and debug info. Setup: first-run checklist,
+// storage locations, and the Support Countdown.
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +19,8 @@ import 'singularity_wizard.dart';
 // explained in plain words). Dangerous settings live in a closed
 // collapsible section. Rooted settings live in their own closed
 // collapsible section, only shown when root is detected.
+/// Device and Settings screen: headset info, safe settings, backups,
+/// home launchers, health, plus the closed Dangerous and Rooted sections.
 class DeviceSettingsScreen extends StatefulWidget {
   final AppState state;
   const DeviceSettingsScreen({required this.state, super.key});
@@ -28,6 +36,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   double _brightness = 0.7;
   bool _autoBrightness = false;
   int _texture = 0; // 0 = default, else square texture size
+  // 30 seconds, the default screen timeout.
   int _timeout = 30000;
   bool _stayAwake = false;
   bool _fullRate = false;
@@ -50,6 +59,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   bool _homeAppsLoading = false;
 
   @override
+  /// Loads root status, health, device backups, homes, snapshots,
+  /// Singularity extras, and home apps when the screen opens.
   void initState() {
     super.initState();
     widget.state.loadRooted();
@@ -61,11 +72,14 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     _loadHomeApps();
   }
 
+  /// Reloads the device backups stored on this computer.
   Future<void> _loadDeviceBackups() async {
     _deviceBackups = await widget.state.backend.listDeviceBackups();
     if (mounted) setState(() {});
   }
 
+  /// Reloads the installed home launchers from the headset. Fails soft:
+  /// an empty list when the headset does not answer.
   Future<void> _loadHomes() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -77,6 +91,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Reloads the headset snapshots stored on this computer. Fails soft.
   Future<void> _loadSnapshots() async {
     try {
       _snapshots = await widget.state.backend.snapshotList();
@@ -86,6 +101,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Reloads battery, storage, uptime, and battery history from the
+  /// headset. Fails soft, one missing answer does not hide the other.
   Future<void> _loadHealth() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -103,6 +120,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     if (mounted) setState(() => _healthLoading = false);
   }
 
+  /// Formats a Unix timestamp as "Jan 5, 3:04 PM" in local time.
   String _formatDayTime(int unixSeconds) {
     final d = DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -111,6 +129,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     return '${months[d.month - 1]} ${d.day}, $hour:${d.minute.toString().padLeft(2, '0')} $ampm';
   }
 
+  /// Formats milliseconds of app use as "45 min" or "2 h 15 min".
   String _formatUseTime(int ms) {
     final minutes = ms ~/ 60000;
     if (minutes < 60) return '$minutes min';
@@ -166,6 +185,18 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     if (mounted) setState(() => _homeAppsLoading = false);
   }
 
+  /// Friendly name for a launcher. The headset reports Lightning
+  /// Launcher with the plain label "launcher", so map the known
+  /// packages to their real names instead of showing that.
+  String _homeDisplayName(HomeEntry h) {
+    if (h.package == 'com.threethan.launcher') return 'Lightning Launcher';
+    if (h.package == 'com.itsmattkc.questhomeswitcher') return 'Quest Home Switcher';
+    if (h.label.isEmpty) return h.package;
+    return h.label[0].toUpperCase() + h.label.substring(1);
+  }
+
+  /// One home app row (Lightning Launcher or Quest Home Switcher) with
+  /// Download, Install/Update, Open, and Uninstall.
   Widget _homeAppRow(HomeAppStatus a) {
     final serial = widget.state.selectedDevice?.serial;
     Future<void> reload() async => _loadHomeApps();
@@ -262,6 +293,31 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
         child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
       );
 
+  /// One labelled row in the About card: the label on the left in a
+  /// muted tone, the value on the right. Long values wrap instead of
+  /// overflowing.
+  Widget _aboutRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 110,
+            child: Text(label, style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)),
+          ),
+          Expanded(child: Text(value)),
+        ]),
+      );
+
+  /// A small subheading inside the About card (Headset, Display,
+  /// Battery, ...). The first one sits right under the card title.
+  Widget _aboutSection(String title) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 2),
+        child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      );
+
+  /// One Singularity download row (Singularity, Frida, or the hosts
+  /// blocklist) with the right buttons for it: Download, Install or Push,
+  /// and Start/Stop or Apply/Remove. Buttons are disabled until the file
+  /// is downloaded and a headset is connected.
   Widget _downloadRow(SingularityDownload d) {
     final serial = widget.state.selectedDevice?.serial;
     final buttons = <Widget>[];
@@ -368,6 +424,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     );
   }
 
+  /// Writes one setting to the headset by key, then shows the
+  /// plain-language result.
   Future<void> _apply(String key, String value, String plain) async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -375,6 +433,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     if (mounted) showResult(context, r.ok, r.ok ? plain : r.message);
   }
 
+  /// Refresh rates this headset supports: Quest 1 caps at 72 Hz,
+  /// Quest 2 at 120 Hz, Quest 3 and later up to 207 Hz.
   List<int> get _refreshRates {
     final info = widget.state.deviceInfo;
     if (info?.isQuest1 == true) return [60, 72];
@@ -384,6 +444,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   }
 
   @override
+  /// Builds the whole Device and Settings page: About, Display and
+  /// speed, Backups, Home, Health, Rooted, and Dangerous sections.
   Widget build(BuildContext context) {
     final s = widget.state;
     final info = s.deviceInfo;
@@ -405,13 +467,26 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                   : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('About this headset', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
-                      Text('Model: ${info.displayName}'),
+                      _aboutSection('Headset'),
+                      _aboutRow('Name', s.headsetName),
+                      _aboutRow('Model', info.displayName),
                       if (info.isQuest1) const Text('Singularity root features and Quest Home Switcher are not available on Quest 1.'),
-                      Text('Serial: ${info.serial}'),
-                      Text('Firmware: ${info.firmware}'),
-                      Text('Android: ${info.androidVersion}'),
-                      Text('Screen: ${info.resolution}'),
-                      Text('Processor: ${info.cpuAbi}'),
+                      _aboutRow('Serial', info.serial),
+                      _aboutRow('Firmware', info.firmware),
+                      _aboutRow('Android', info.androidVersion),
+                      _aboutSection('Display'),
+                      _aboutRow('Screen', info.resolution),
+                      if (info.densityDpi > 0) _aboutRow('Density', '${info.densityDpi} dpi'),
+                      _aboutSection('Battery'),
+                      _aboutRow('Level', '${info.batteryLevel}%${info.charging ? ' (charging)' : ''}'),
+                      if (info.batteryHealth.isNotEmpty) _aboutRow('Health', info.batteryHealth),
+                      if (info.batteryTempC > 0) _aboutRow('Temperature', '${info.batteryTempC}°C'),
+                      if (info.batteryVoltageMv > 0) _aboutRow('Voltage', '${(info.batteryVoltageMv / 1000).toStringAsFixed(2)} V'),
+                      _aboutSection('Storage'),
+                      _aboutRow('Used', '${info.storageUsedGb} GB of ${info.storageTotalGb} GB'),
+                      _aboutRow('Free', '${info.storageFreeGb} GB'),
+                      _aboutSection('Processor'),
+                      _aboutRow('CPU', info.cpuAbi),
                     ]),
             ),
           ),
@@ -495,6 +570,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Slider(value: _brightness, onChanged: (v) async {
                   setState(() => _brightness = v);
+                  // Android brightness is 0-255; the slider is 0-1.
                   await _apply('system:screen_brightness', '${(v * 255).toInt()}', 'Brightness set.');
                 }),
                 SwitchListTile(
@@ -652,20 +728,26 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
           _categoryHeader('Home'),
           CardGrid(cards: [
             _sectionCard(
-              title: 'Homes',
-              subtitle: 'The launchers on this headset (Lightning Launcher and any other third-party home). Meta Home, the stock launcher, is not listed: it is the default, and you switch to it in the headset\u2019s Home settings.',
-              infoTitle: 'Homes',
-              infoBody: 'A home is the place you land in when the headset starts: the 3D room and the dock you launch apps from. This list shows launchers you installed, not Meta Home itself. Set active tries the headset\u2019s own switch command; on current firmware the headset refuses it, so the button opens the home settings on the headset and you pick there. Open shows a launcher once without changing the default.',
+              title: 'Home launcher',
+              subtitle: 'What you see when the headset starts. Meta Home is the stock one. Any other launcher you install shows up here.',
+              infoTitle: 'Home launcher',
+              infoBody: 'A home is the place you land in when the headset starts: the 3D room and the dock you launch apps from. Meta Home is the stock home, it is not in the list below, it is the default. Try once opens a launcher for this session only, it does not change the default. Make default tries the headset\u2019s own switch, on current firmware the headset refuses it, so the button opens the Home settings on the headset and you pick there.',
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  _homes.any((h) => h.isCurrent)
+                      ? 'Current home: ${_homeDisplayName(_homes.firstWhere((h) => h.isCurrent))}'
+                      : 'Current home: Meta Home',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
                 if (_homes.isEmpty)
-                  const Text('No third-party launcher is installed yet. Install Lightning Launcher from the Home apps section below, or pick a home in the headset\u2019s Home settings.')
+                  const Text('No other launcher installed yet. Meta Home is the only home. Install Lightning Launcher from the dropdown below to get another one.')
                 else ...[
-                  if (!_homes.any((h) => h.isCurrent))
-                    const Text('Meta Home is the active home right now. Open a launcher below to try it, or set one active to make it the default.'),
+                  const Text('Your other launchers:'),
                   ..._homes.map((h) => ListTile(
                         leading: const Icon(Icons.home),
-                        title: Text(h.label),
-                        subtitle: Text(h.component),
+                        title: Text(_homeDisplayName(h)),
+                        subtitle: Text(h.package, style: const TextStyle(fontSize: 12)),
                         trailing: h.isCurrent
                             ? const Chip(label: Text('Active', style: TextStyle(color: Color(0xFF070B14), fontWeight: FontWeight.bold)), backgroundColor: Color(0xFF38BDF8))
                             : Row(mainAxisSize: MainAxisSize.min, children: [
@@ -674,7 +756,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                                     final r = await s.backend.homesOpen(s.selectedDevice!.serial, h.component);
                                     if (mounted) showResult(context, r.ok, r.message);
                                   },
-                                  child: const Text('Open'),
+                                  child: const Text('Try once'),
                                 ),
                                 TextButton(
                                   onPressed: () async {
@@ -690,7 +772,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                                     }
                                     await _loadHomes();
                                   },
-                                  child: const Text('Set active'),
+                                  child: const Text('Make default'),
                                 ),
                               ]),
                       )),
@@ -711,11 +793,12 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                             if (mounted) showResult(context, r.ok, r.message);
                           },
                     icon: const Icon(Icons.home),
-                    label: const Text('Open Meta Home once'),
+                    label: const Text('Try Meta Home once'),
                   ),
                 ]),
                 const SizedBox(height: 12),
-                const Text('Open a settings screen on the headset', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Divider(),
+                const Text('Headset settings shortcuts', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final entry in const [('Wi-Fi', 'wifi'), ('Display', 'display'), ('Storage', 'storage'), ('Apps', 'apps'), ('About', 'about')])
@@ -729,6 +812,66 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
                       child: Text(entry.$1),
                     ),
                 ]),
+                const SizedBox(height: 12),
+                const Divider(),
+                ExpansionTile(
+                  title: const Text('Get a home launcher', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Install Lightning Launcher or Quest Home Switcher.'),
+                  initiallyExpanded: false,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(info?.isQuest1 == true ? 'Lightning Launcher replaces the apps menu on a Quest 1. Quest Home Switcher only lists Quest 2 / 3 / 3S, so it is not offered here.' : 'Lightning Launcher replaces the apps menu. Quest Home Switcher manages custom 3D home environments.', style: const TextStyle(fontSize: 13)),
+                        const SizedBox(height: 8),
+                        if (_homeAppsLoading)
+                          const Text('Checking the headset…')
+                        else if (_homeApps.isEmpty)
+                          const Text('Could not read the home apps. Tap Refresh below.')
+                        else
+                          ..._homeApps.map((a) => _homeAppRow(a)),
+                        OutlinedButton.icon(
+                          onPressed: () async => _loadHomeApps(),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Refresh home apps'),
+                        ),
+                        if (info?.supportsHomeSwitcher == true) ...[
+                          const SizedBox(height: 16),
+                          Row(children: [
+                            const Expanded(child: Text('Quest Home Switcher', style: TextStyle(fontWeight: FontWeight.bold))),
+                            InfoButton('Quest Home Switcher', 'Quest Home Switcher manages custom 3D home environments: the official ones and about 250 community homes. The catalogue of homes lives inside the app itself, so browsing and viewing the homes happens on the headset, in Quest Home Switcher. The app is not open source; ReOculus only downloads its published release APK, never its code.'),
+                          ]),
+                          const SizedBox(height: 8),
+                          const Text('Browse and view custom homes inside Quest Home Switcher on the headset: it has the full catalogue (official + about 250 community homes) with search, sorting and previews. Download and apply a home there; ReOculus just installs and opens the app.', style: TextStyle(fontSize: 13)),
+                          const SizedBox(height: 8),
+                          Wrap(spacing: 8, runSpacing: 8, children: [
+                            FilledButton(
+                              onPressed: s.selectedDevice == null
+                                  ? null
+                                  : () async {
+                                      final r = await s.backend.homeAppOpen(s.selectedDevice!.serial, 'qhs');
+                                      if (mounted) showResult(context, r.ok, r.message);
+                                    },
+                              child: const Text('Browse custom homes'),
+                            ),
+                            OutlinedButton(
+                              onPressed: s.selectedDevice == null
+                                  ? null
+                                  : () async {
+                                      final r = await s.backend.homeAppInstall(s.selectedDevice!.serial, 'qhs');
+                                      if (mounted) showResult(context, r.ok, r.message);
+                                      await _loadHomeApps();
+                                    },
+                              child: const Text('Install Quest Home Switcher'),
+                            ),
+                          ]),
+                          const SizedBox(height: 8),
+                          const Text('Source: github.com/nikitat21/Quest-Home-Switcher', style: TextStyle(fontSize: 13)),
+                        ],
+                      ]),
+                    ),
+                  ],
+                ),
               ]),
             ),
           ]),
@@ -812,7 +955,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
             Card(
               child: const Padding(
                 padding: EdgeInsets.all(16),
-                child: Text('Singularity is only for Quest 2, Pro, 3, and 3S, so there are no rooted settings on this Quest 1. Lightning Launcher in the Home apps section below still works, and so do backups, files, and mirror.'),
+                child: Text('Singularity is only for Quest 2, Pro, 3, and 3S, so there are no rooted settings on this Quest 1. Lightning Launcher in the Get a home launcher dropdown still works, and so do backups, files, and mirror.'),
               ),
             )
           else
@@ -946,63 +1089,6 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
           ),
           const SizedBox(height: 12),
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  const Expanded(child: Text('Home apps', style: TextStyle(fontWeight: FontWeight.bold))),
-                  InfoButton('Home apps', info?.isQuest1 == true ? 'Lightning Launcher replaces the apps menu on a Quest 1. Quest Home Switcher only lists Quest 2 / 3 / 3S, so it is not offered here. The list is scanned from the headset, so it knows what is installed and whether an update is out. The APK is downloaded from the author\u2019s GitHub release when you tap Download; nothing is bundled with ReOculus.' : 'The two apps to use instead of a custom home. Lightning Launcher replaces the apps menu, Quest Home Switcher manages custom 3D home environments. The list is scanned from the headset, so it knows what is installed and whether an update is out. The APKs are downloaded from the authors\u2019 GitHub releases when you tap Download; nothing is bundled with ReOculus.'),
-                ]),
-                const SizedBox(height: 8),
-                if (_homeAppsLoading)
-                  const Text('Checking the headset…')
-                else if (_homeApps.isEmpty)
-                  const Text('Could not read the home apps. Tap Refresh below.')
-                else
-                  ..._homeApps.map((a) => _homeAppRow(a)),
-                OutlinedButton.icon(
-                  onPressed: () async => _loadHomeApps(),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh home apps'),
-                ),
-                if (info?.supportsHomeSwitcher == true) ...[
-                  const SizedBox(height: 16),
-                  Row(children: [
-                    const Expanded(child: Text('Quest Home Switcher', style: TextStyle(fontWeight: FontWeight.bold))),
-                    InfoButton('Quest Home Switcher', 'Quest Home Switcher manages custom 3D home environments: the official ones and about 250 community homes. The catalogue of homes lives inside the app itself, so browsing and viewing the homes happens on the headset, in Quest Home Switcher. The app is not open source; ReOculus only downloads its published release APK, never its code.'),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('Browse and view custom homes inside Quest Home Switcher on the headset: it has the full catalogue (official + about 250 community homes) with search, sorting and previews. Download and apply a home there; ReOculus just installs and opens the app.', style: TextStyle(fontSize: 13)),
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 8, runSpacing: 8, children: [
-                    FilledButton(
-                      onPressed: s.selectedDevice == null
-                          ? null
-                          : () async {
-                              final r = await s.backend.homeAppOpen(s.selectedDevice!.serial, 'qhs');
-                              if (mounted) showResult(context, r.ok, r.message);
-                            },
-                      child: const Text('Browse custom homes'),
-                    ),
-                    OutlinedButton(
-                      onPressed: s.selectedDevice == null
-                          ? null
-                          : () async {
-                              final r = await s.backend.homeAppInstall(s.selectedDevice!.serial, 'qhs');
-                              if (mounted) showResult(context, r.ok, r.message);
-                              await _loadHomeApps();
-                            },
-                      child: const Text('Install Quest Home Switcher'),
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('Source: github.com/nikitat21/Quest-Home-Switcher', style: TextStyle(fontSize: 13)),
-                ],
-              ]),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
             child: ExpansionTile(
               title: const Text('Dangerous settings', style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: const Text('These can break the headset or make it unusable until you restart it. Only change them if you know what they do.'),
@@ -1075,6 +1161,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     );
   }
 
+  /// Restores a snapshot onto the headset. Dry run first, then confirm;
+  /// overwrites settings, Guardian data, Wi-Fi configs, and apps.
   Future<void> _restoreSnapshot(SnapshotEntry snap) async {
     final s = widget.state;
     final serial = s.selectedDevice?.serial;
@@ -1098,6 +1186,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     if (mounted) showResult(context, r?.ready ?? false, r == null ? 'Restore failed.' : r.steps.map((st) => '${st.item}: ${st.message}').join('\n'));
   }
 
+  /// Restores a device backup onto the headset. Dry run first, then
+  /// confirm; overwrites settings, Guardian data, Wi-Fi configs, and apps.
   Future<void> _restoreDeviceBackup(DeviceBackupEntry b) async {
     final s = widget.state;
     final serial = s.selectedDevice?.serial;
@@ -1123,6 +1213,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
 }
 
 // ---- Mirror / Streaming ---------------------------------------------------
+/// Mirror screen: live headset screen via scrcpy, quality presets,
+/// recording, and screenshots.
 class MirrorScreen extends StatefulWidget {
   final AppState state;
   const MirrorScreen({required this.state, super.key});
@@ -1137,16 +1229,20 @@ class _MirrorScreenState extends State<MirrorScreen> {
   MirrorSettings _quality = const MirrorSettings(usbQuality: 'balanced', wifiQuality: 'performance');
 
   @override
+  /// Loads the saved mirror quality when the screen opens.
   void initState() {
     super.initState();
     _loadQuality();
   }
 
+  /// Loads the saved USB and Wi-Fi quality presets from the backend.
   Future<void> _loadQuality() async {
     final q = await widget.state.backend.mirrorSettings();
     if (q != null && mounted) setState(() => _quality = q);
   }
 
+  /// Saves a changed quality preset. Rolls back to the old value on
+  /// screen if the backend refuses it.
   Future<void> _saveQuality({String? usb, String? wifi, bool? autoRestart}) async {
     final before = _quality;
     setState(() => _quality = MirrorSettings(
@@ -1180,6 +1276,7 @@ class _MirrorScreenState extends State<MirrorScreen> {
     }
   }
 
+  /// One quality dropdown row (USB or Wi-Fi): Performance, Balanced, or Quality.
   Widget _qualityRow(String label, String value, ValueChanged<String> onChanged) => Row(children: [
         SizedBox(width: 48, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold))),
         Expanded(
@@ -1198,6 +1295,9 @@ class _MirrorScreenState extends State<MirrorScreen> {
         ),
       ]);
 
+  /// Starts the mirror in its own scrcpy window, using the saved preset
+  /// for the current transport (USB or Wi-Fi). Also starts the
+  /// auto-restart watcher when that is on.
   Future<void> _mirror() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -1227,6 +1327,8 @@ class _MirrorScreenState extends State<MirrorScreen> {
     }
   }
 
+  /// Stops the mirror (and its watcher). Silent when called from inside
+  /// a restart, so the user is not told twice.
   Future<void> _stopMirror({bool silent = false}) async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -1236,6 +1338,8 @@ class _MirrorScreenState extends State<MirrorScreen> {
     widget.state.log('Mirror stopped');
   }
 
+  /// Restarts the mirror after a 2 second pause, so the headset finishes
+  /// switching apps before the new stream starts.
   Future<void> _restartMirror() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -1250,6 +1354,7 @@ class _MirrorScreenState extends State<MirrorScreen> {
   }
 
   @override
+  /// Builds the mirror page: start/stop, quality, and record/screenshot cards.
   Widget build(BuildContext context) {
     final serial = widget.state.selectedDevice?.serial;
     return SingleChildScrollView(
@@ -1382,6 +1487,8 @@ class _MirrorScreenState extends State<MirrorScreen> {
 }
 
 // ---- Logs: logcat + Terminal + Debug info ----------------------------------
+/// Logs screen: App logs, Headset logs (logcat), Terminal, and Debug
+/// info, under one tab bar.
 class LogsScreen extends StatefulWidget {
   final AppState state;
   const LogsScreen({required this.state, super.key});
@@ -1391,6 +1498,7 @@ class LogsScreen extends StatefulWidget {
 
 class _LogsScreenState extends State<LogsScreen> {
   int _tab = 0; // 0 = Logs, 1 = Terminal, 2 = Debug info
+  int _logSource = 0; // 0 = App logs, 1 = Headset logs
   // Logcat
   List<String> _lines = [];
   String _filter = '';
@@ -1407,11 +1515,14 @@ class _LogsScreenState extends State<LogsScreen> {
   bool _debugLoading = false;
 
   @override
+  /// Loads the headset log lines when the screen opens.
   void initState() {
     super.initState();
     _load();
   }
 
+  /// Reloads the headset log lines, filtered by the search text.
+  /// Skipped while paused or with no headset.
   Future<void> _load() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null || _paused) return;
@@ -1420,6 +1531,7 @@ class _LogsScreenState extends State<LogsScreen> {
     setState(() => _loading = false);
   }
 
+  /// Reloads the debug info (questctl and adb versions, device, root status).
   Future<void> _loadDebug() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -1428,6 +1540,9 @@ class _LogsScreenState extends State<LogsScreen> {
     setState(() => _debugLoading = false);
   }
 
+  /// Runs the typed shell command on the headset and shows its exit code
+  /// and output. "Stop" only stops waiting; the command still finishes on
+  /// the headset.
   Future<void> _runCommand() async {
     final serial = widget.state.selectedDevice?.serial;
     final cmd = _cmdCtrl.text.trim();
@@ -1454,6 +1569,7 @@ class _LogsScreenState extends State<LogsScreen> {
     }
   }
 
+  /// Builds the debug info as plain text, for copying.
   String _debugText() {
     final d = _debug;
     if (d == null) return 'No debug info loaded.';
@@ -1476,7 +1592,9 @@ class _LogsScreenState extends State<LogsScreen> {
   }
 
   @override
+  /// Builds the Logs tabs: App logs, Headset logs, Terminal, or Debug info.
   Widget build(BuildContext context) {
+    final s = widget.state;
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1498,6 +1616,49 @@ class _LogsScreenState extends State<LogsScreen> {
         ]),
         const SizedBox(height: 8),
         if (_tab == 0) ...[
+          SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('App logs')),
+              ButtonSegment(value: 1, label: Text('Headset logs')),
+            ],
+            selected: {_logSource},
+            onSelectionChanged: (v) => setState(() => _logSource = v.first),
+          ),
+          const SizedBox(height: 8),
+          if (_logSource == 0) ...[
+            Row(children: [
+              OutlinedButton.icon(
+                onPressed: s.activity.isEmpty
+                    ? null
+                    : () async {
+                        final f = File('/tmp/reoculus-app-log.txt');
+                        await f.writeAsString(s.activity.join('\n'));
+                        if (mounted) showResult(context, true, 'App logs saved to /tmp/reoculus-app-log.txt');
+                      },
+                icon: const Icon(Icons.download),
+                label: const Text('Export'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: s.activity.isEmpty ? null : () => widget.state.clearActivity(),
+                icon: const Icon(Icons.delete),
+                label: const Text('Clear'),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            const Text('What ReOculus itself did on this computer in this session: installs, backups, mirror, shell commands. Not the headset log, and it is cleared when the app closes.'),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Card(
+                child: s.activity.isEmpty
+                    ? const EmptyState(icon: Icons.article, title: 'No app log yet', body: 'Do something in the app, like install an app or start the mirror, and it shows up here.')
+                    : ListView.builder(
+                        itemCount: s.activity.length,
+                        itemBuilder: (c, i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: SelectableText(s.activity[i], style: const TextStyle(fontFamily: 'monospace', fontSize: 13))),
+                      ),
+              ),
+            ),
+          ] else ...[
           Row(children: [
             FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Refresh')),
             const SizedBox(width: 8),
@@ -1530,6 +1691,7 @@ class _LogsScreenState extends State<LogsScreen> {
                         ),
             ),
           ),
+          ],
         ] else if (_tab == 1) ...[
           const Text('Commands run on the headset as the shell user. They can read almost everything, but writing outside shared storage needs root.'),
           const SizedBox(height: 12),
@@ -1648,6 +1810,8 @@ class _LogsScreenState extends State<LogsScreen> {
 // Real mode only: there is no demo toggle and no sample data. The app
 // always uses the Real backend (questctl); if it is missing, Home and
 // Devices show a plain error state instead of falling back.
+/// Setup screen: first-run checklist, theme, backend info, storage
+/// locations, About, and the Support Countdown.
 class SetupScreen extends StatefulWidget {
   final AppState state;
   const SetupScreen({required this.state, super.key});
@@ -1662,11 +1826,13 @@ class _SetupScreenState extends State<SetupScreen> {
   PathsInfo? _paths;
 
   @override
+  /// Loads the storage locations when the screen opens.
   void initState() {
     super.initState();
     _loadPaths();
   }
 
+  /// Reloads the backup and recordings folder paths. Fails soft.
   Future<void> _loadPaths() async {
     try {
       _paths = await widget.state.backend.pathsGet();
@@ -1676,6 +1842,7 @@ class _SetupScreenState extends State<SetupScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Opens a URL in the system browser. Failures are ignored.
   Future<void> _openUrl(String url) async {
     try {
       await Process.run('xdg-open', [url]);
@@ -1683,6 +1850,8 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   @override
+  /// Builds the Setup page: checklist, design, backend, storage, About,
+  /// and Support Countdown cards.
   Widget build(BuildContext context) {
     final s = widget.state;
     return ListenableBuilder(
@@ -1848,10 +2017,41 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.25. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
+                  const Text('ReOculus 0.2.26. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),
+                ]),
+              ),
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Support Countdown', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 4),
+                  const Text('When Meta stops updating each headset. The headset keeps working after that, it just stops getting new stuff.', style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 12),
+                  const Text('Quest 1: already ended', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  const Text('Features ended: January 2023 (v50 was the last feature release)'),
+                  const Text('Security patches ended: 31 August 2024'),
+                  const SizedBox(height: 12),
+                  const Divider(),
+                  const SizedBox(height: 4),
+                  const Text('Quest 2: counting down', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  _CountdownRow(
+                    label: 'Feature updates end',
+                    detail: 'March 2027',
+                    target: _quest2FeaturesEnd,
+                  ),
+                  const SizedBox(height: 12),
+                  _CountdownRow(
+                    label: 'Security patches end',
+                    detail: 'December 2027',
+                    target: _quest2SecurityEnd,
+                  ),
                 ]),
               ),
             ),
@@ -1862,6 +2062,52 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 }
 
+// ---- Support Countdown --------------------------------------------------
+/// Support Countdown dates. Meta only gives a month for Quest 2,
+/// so the countdowns run to the end of that month: 31 March 2027
+/// for the last feature release, 31 December 2027 for the final
+/// security patch. Quest 1: features ended January 2023 (v50),
+/// security patches ended 31 August 2024.
+/// (final, not const: DateTime has no const constructor.)
+final _quest2FeaturesEnd = DateTime(2027, 3, 31, 23, 59, 59);
+final _quest2SecurityEnd = DateTime(2027, 12, 31, 23, 59, 59);
+
+/// One countdown line: "Feature updates end, March 2027" then
+/// "138 days left". Days only, no hours or seconds, so a future
+/// date change is just a new target date above.
+class _CountdownRow extends StatelessWidget {
+  final String label, detail;
+  final DateTime target;
+  const _CountdownRow({required this.label, required this.detail, required this.target});
+  /// Builds one countdown line: the label, then days left, or "Ended".
+  @override
+  Widget build(BuildContext context) {
+    final left = target.difference(DateTime.now());
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('$label, $detail', style: const TextStyle(fontWeight: FontWeight.bold)),
+      const SizedBox(height: 4),
+      if (left.isNegative)
+        const Text('Ended', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))
+      else
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(
+              text: '${left.inDays}',
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const TextSpan(
+              text: ' days left',
+              style: TextStyle(fontSize: 20),
+            ),
+          ]),
+        ),
+    ]);
+  }
+}
+
+// ---- Setup checklist tile -----------------------------------------------
+/// One checklist row: a checkbox, a title, an explanation, and an
+/// optional button to open the linked page.
 class _CheckTile extends StatelessWidget {
   final String title, body;
   final bool done;
@@ -1869,6 +2115,7 @@ class _CheckTile extends StatelessWidget {
   final VoidCallback? onOpen;
   const _CheckTile({required this.title, required this.body, required this.done, required this.onChanged, this.onOpen});
   @override
+  /// Builds one checklist row.
   Widget build(BuildContext context) => Card(
         child: CheckboxListTile(
           value: done,

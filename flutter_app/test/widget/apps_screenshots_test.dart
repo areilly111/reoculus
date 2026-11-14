@@ -42,6 +42,17 @@ const _deviceQuest1 = QuestDevice(
   transport: 'usb',
 );
 
+// The same headset a second time, over Wi-Fi: the Devices goldens
+// prove the Home screen folds the USB and Wi-Fi entries into one
+// card when the headset's own Wi-Fi address matches.
+const _deviceWifi = QuestDevice(
+  serial: '192.168.100.112:5555',
+  state: 'device',
+  model: 'Quest 2',
+  headsetModel: 'quest2',
+  transport: 'wifi',
+);
+
 const _deviceInfo = DeviceInfo(
   model: 'Quest 2',
   serial: 'TESTSERIAL000001',
@@ -51,6 +62,10 @@ const _deviceInfo = DeviceInfo(
   cpuAbi: 'arm64-v8a',
   batteryLevel: 87,
   batteryTempC: 31,
+  batteryHealth: 'Good',
+  batteryVoltageMv: 4200,
+  densityDpi: 200,
+  wifiIp: '192.168.100.112',
   storageUsedGb: 86,
   storageTotalGb: 112,
   charging: true,
@@ -152,16 +167,39 @@ const _health = HealthInfo(
 /// loudly here instead of silently rendering an empty screen.
 class FakeBackend implements BackendService {
   final bool quest1;
-  const FakeBackend({this.quest1 = false});
+  /// The same headset twice (USB + Wi-Fi): proves the Home screen
+  /// folds the two entries into one card.
+  final bool twoDevices;
+  const FakeBackend({this.quest1 = false, this.twoDevices = false});
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
     final name = invocation.memberName;
     if (name == #listApps) return Future<List<QuestApp>>.value(_apps);
     if (name == #listLibrary) return Future<List<LibraryEntry>>.value(const []);
-    if (name == #listDevices) return Future<List<QuestDevice>>.value([quest1 ? _deviceQuest1 : _device]);
+    if (name == #listDevices) {
+      return Future<List<QuestDevice>>.value(
+        twoDevices ? [_device, _deviceWifi] : [quest1 ? _deviceQuest1 : _device],
+      );
+    }
     if (name == #deviceInfo) return Future<DeviceInfo?>.value(quest1 ? _deviceInfoQuest1 : _deviceInfo);
+    if (name == #headsetConfig) {
+      // The Quest 2 fake has a custom name, so the goldens show the
+      // name in use; the Quest 1 fake has none, so it shows the
+      // plain model name.
+      return Future<HeadsetConfig>.value(quest1
+          ? HeadsetConfig.absent
+          : const HeadsetConfig(present: true, name: 'My Quest 2'));
+    }
+    if (name == #headsetConfigWrite) {
+      return Future<HeadsetConfig?>.value(const HeadsetConfig(present: true, name: 'My Quest 2'));
+    }
+    if (name == #headsetConfigSetName) {
+      return Future<HeadsetConfig?>.value(const HeadsetConfig(present: true, name: 'My Quest 2'));
+    }
+    if (name == #renameFile || name == #makeDir) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Done.'));
     if (name == #appIcon) return Future<AppIcon?>.value(null);
+    if (name == #libraryIcon) return Future<AppIcon?>.value(null);
     if (name == #label) return 'Fake backend';
     if (name == #scrcpyAvailable) return Future<bool>.value(false);
     if (name == #listFiles) return Future<List<QuestFile>>.value(_files);
@@ -449,10 +487,10 @@ Future<void> _pump(WidgetTester tester, AppState state, Widget screen) async {
   await tester.pumpAndSettle();
 }
 
-AppState _state({bool quest1 = false}) {
-  final state = AppState(backend: FakeBackend(quest1: quest1));
+AppState _state({bool quest1 = false, bool twoDevices = false}) {
+  final state = AppState(backend: FakeBackend(quest1: quest1, twoDevices: twoDevices));
   state.selectedDevice = quest1 ? _deviceQuest1 : _device;
-  state.devices = [quest1 ? _deviceQuest1 : _device];
+  state.devices = twoDevices ? [_device, _deviceWifi] : [quest1 ? _deviceQuest1 : _device];
   // Normally refreshDevices fills this in from the backend; the
   // golden pumps set the device directly, so set it here too.
   state.deviceInfo = quest1 ? _deviceInfoQuest1 : _deviceInfo;
@@ -471,16 +509,19 @@ void main() {
     await expectLater(find.byType(HomeScreen), matchesGoldenFile('goldens/home.png'));
   });
 
+  // Devices was folded into Home in 0.2.26 (the Headsets list), so
+  // these goldens pump Home: one with a USB + Wi-Fi twin proving the
+  // two entries fold into a single card, one Quest 1.
   testWidgets('Devices screen', (WidgetTester tester) async {
-    final state = _state();
-    await _pump(tester, state, DevicesScreen(state: state));
-    await expectLater(find.byType(DevicesScreen), matchesGoldenFile('goldens/devices.png'));
+    final state = _state(twoDevices: true);
+    await _pump(tester, state, HomeScreen(state: state, goTo: (_) {}));
+    await expectLater(find.byType(HomeScreen), matchesGoldenFile('goldens/devices.png'));
   });
 
   testWidgets('Devices screen, Quest 1', (WidgetTester tester) async {
     final state = _state(quest1: true);
-    await _pump(tester, state, DevicesScreen(state: state));
-    await expectLater(find.byType(DevicesScreen), matchesGoldenFile('goldens/devices-quest1.png'));
+    await _pump(tester, state, HomeScreen(state: state, goTo: (_) {}));
+    await expectLater(find.byType(HomeScreen), matchesGoldenFile('goldens/devices-quest1.png'));
   });
 
   testWidgets('Device and Settings screen, Quest 1', (WidgetTester tester) async {

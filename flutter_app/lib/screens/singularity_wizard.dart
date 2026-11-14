@@ -1,3 +1,7 @@
+// Singularity install wizard: guided rooting for a Quest 2.
+// Preflight checks, backup, download, install, then root on the headset
+// and verify. Singularity itself is never bundled; it is downloaded
+// from the author's GitHub release at the user's request.
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../services/app_state.dart';
@@ -21,6 +25,7 @@ class SingularityWizardScreen extends StatefulWidget {
   State<SingularityWizardScreen> createState() => _SingularityWizardScreenState();
 }
 
+/// Wizard state: which step is open, and the result of each step so far.
 class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
   int _step = 0;
   SingularityPreflight? _preflight;
@@ -31,8 +36,11 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
   bool _busy = false;
   String? _error;
 
+  /// The selected headset's serial, or empty when none is connected.
   String get _serial => widget.state.selectedDevice?.serial ?? '';
 
+  /// Step 1: checks the headset is a Quest 2, charged, not already
+  /// rooted, and has free space. Opens step 2 when ready.
   Future<void> _runPreflight() async {
     setState(() { _busy = true; _error = null; });
     try {
@@ -44,6 +52,8 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Step 2: backs up the headset before rooting. Opens step 3 when the
+  /// backup is done.
   Future<void> _runBackup() async {
     setState(() { _busy = true; _error = null; });
     try {
@@ -61,6 +71,8 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Step 3: downloads the latest Singularity release from the author's
+  /// GitHub and checks it. Opens step 4 on success.
   Future<void> _runDownload() async {
     setState(() { _busy = true; _error = null; });
     try {
@@ -77,6 +89,8 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Step 4: installs Singularity on the headset over ADB. Nothing is
+  /// rooted yet. Opens step 5 on success.
   Future<void> _runInstall() async {
     setState(() { _busy = true; _error = null; });
     try {
@@ -93,6 +107,8 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Step 5: checks whether root is on after the user pressed Root Now
+  /// in Singularity on the headset.
   Future<void> _runVerify() async {
     setState(() { _busy = true; _error = null; });
     try {
@@ -111,12 +127,15 @@ class _SingularityWizardScreenState extends State<SingularityWizardScreen> {
   }
 
   @override
+  /// Runs the preflight checks as soon as the wizard opens.
   void initState() {
     super.initState();
     _runPreflight();
   }
 
   @override
+  /// Builds the five-step wizard. A step only opens when the one before
+  /// it is done.
   Widget build(BuildContext context) {
     final s = widget.state;
     return Scaffold(

@@ -1,3 +1,9 @@
+// Home and Devices screens, plus the shared "Connect a headset" dialog.
+// Home: the dashboard with headset status, quick actions, and recent
+// activity. Devices: the list of connected headsets, rename, and sync.
+// The connect dialog is used from both, with USB and Wi-Fi tabs.
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../services/app_state.dart';
@@ -9,7 +15,27 @@ import '../widgets/common.dart';
 // choices, plain language, no jargon. Developer Mode help is inside
 // both tabs: it is the one Meta gate, and it is free.
 
+/// Shows the "Connect a headset" dialog: USB and Wi-Fi tabs on Linux,
+/// Wi-Fi only on Android (a phone cannot run an adb server to the headset).
 Future<void> showConnectHeadsetDialog(BuildContext context, AppState state) async {
+  // Android has no USB path: a phone cannot run an adb server to the
+  // headset, so the dialog is Wi-Fi only there. Linux keeps both tabs.
+  if (Platform.isAndroid) {
+    await showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Connect a headset'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(child: _WifiTab(state: state)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')),
+        ],
+      ),
+    );
+    return;
+  }
   await showDialog(
     context: context,
     builder: (c) => DefaultTabController(
@@ -37,10 +63,13 @@ Future<void> showConnectHeadsetDialog(BuildContext context, AppState state) asyn
   );
 }
 
+/// USB tab: the three steps to plug in and allow USB debugging, plus
+/// Developer Mode help.
 class _UsbTab extends StatelessWidget {
   final AppState state;
   const _UsbTab({required this.state});
   @override
+  /// Builds the USB instructions and the Check again button.
   Widget build(BuildContext context) => SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('1. Plug the Quest into this computer with a USB-C cable. Use a data cable, not a charge-only cable.'),
@@ -65,6 +94,7 @@ class _UsbTab extends StatelessWidget {
       );
 }
 
+/// Wi-Fi tab: IP, port, and pairing code fields, plus Developer Mode help.
 class _WifiTab extends StatefulWidget {
   final AppState state;
   const _WifiTab({required this.state});
@@ -74,11 +104,16 @@ class _WifiTab extends StatefulWidget {
 
 class _WifiTabState extends State<_WifiTab> {
   final _ip = TextEditingController();
-  final _port = TextEditingController(text: '37857');
+  // Android has no USB setup step, so the usual port there is 5555
+  // (plain wireless ADB, already listening on most headsets). On
+  // Linux the default stays the pairing port: the app sets up Wi-Fi
+  // over USB first, and pairing is the first step there.
+  final _port = TextEditingController(text: Platform.isAndroid ? '5555' : '37857');
   final _code = TextEditingController();
   bool _busy = false;
 
   @override
+  /// Builds the Wi-Fi form and the Pair / Connect button.
   Widget build(BuildContext context) => SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('The headset and this computer must be on the same Wi-Fi network.'),
@@ -96,12 +131,18 @@ class _WifiTabState extends State<_WifiTab> {
                 ? null
                 : () async {
                     setState(() => _busy = true);
-                    final r = await widget.state.backend.pairWifi(_ip.text.trim(), _port.text.trim(), _code.text.trim());
+                    // Android: the direct transport needs the address
+                    // before the pair/connect call runs, and the
+                    // address is saved on success for the next launch.
+                    // Linux: the existing backend pair/connect flow.
+                    final r = Platform.isAndroid
+                        ? await widget.state.connectWifiDirect(_ip.text.trim(), _port.text.trim(), _code.text.trim())
+                        : await widget.state.backend.pairWifi(_ip.text.trim(), _port.text.trim(), _code.text.trim());
                     if (!mounted) return;
                     setState(() => _busy = false);
                     showResult(context, r.ok, r.message);
                     widget.state.log('Wi-Fi connect: ${r.ok ? 'connected' : r.message}');
-                    if (r.ok) await widget.state.refreshDevices();
+                    if (r.ok && !Platform.isAndroid) await widget.state.refreshDevices();
                   },
             icon: const Icon(Icons.wifi),
             label: const Text('Pair / Connect'),
@@ -109,14 +150,17 @@ class _WifiTabState extends State<_WifiTab> {
           const SizedBox(height: 16),
           const _DevModeHelp(),
           const SizedBox(height: 8),
-          const Text('Tip: the first time you plug in over USB, the app sets up Wi-Fi by itself, so you can unplug after that.'),
+          if (!Platform.isAndroid) const Text('Tip: the first time you plug in over USB, the app sets up Wi-Fi by itself, so you can unplug after that.'),
         ]),
       );
 }
 
+/// Developer Mode help card: the free Meta developer account and where
+/// to turn Developer Mode on.
 class _DevModeHelp extends StatelessWidget {
   const _DevModeHelp();
   @override
+  /// Builds the Developer Mode help card.
   Widget build(BuildContext context) => Card(
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -134,6 +178,8 @@ class _DevModeHelp extends StatelessWidget {
 }
 
 // ---- Home / Dashboard -----------------------------------------------------
+/// Home screen: the dashboard. Headset status, quick actions, and
+/// recent activity.
 class HomeScreen extends StatefulWidget {
   final AppState state;
   final void Function(int) goTo;
@@ -143,13 +189,184 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool _busy = false;
+  /// Battery/storage per headset, for the Headsets list below.
+  final Map<String, DeviceInfo> _infos = {};
+  /// Custom name per headset, read from each headset's own config
+  /// file. Each headset card has its own rename button, and the
+  /// name syncs itself on connect, so there is no name card.
+  final Map<String, HeadsetConfig> _configs = {};
+
   @override
+  /// Refreshes the device list when Home opens, then loads each
+  /// headset's info and custom name for the Headsets list.
   void initState() {
     super.initState();
-    widget.state.refreshDevices();
+    widget.state.refreshDevices().then((_) => _loadInfos());
+  }
+
+  /// Loads model, battery, storage and the custom name for each
+  /// connected headset, skipping ones already loaded. Fails soft
+  /// per headset.
+  Future<void> _loadInfos() async {
+    for (final d in widget.state.devices) {
+      if (!_infos.containsKey(d.serial)) {
+        try {
+          final info = await widget.state.backend.deviceInfo(d.serial);
+          if (info != null) _infos[d.serial] = info;
+        } catch (_) {}
+      }
+      if (!_configs.containsKey(d.serial)) {
+        try {
+          _configs[d.serial] = await widget.state.backend.headsetConfig(d.serial);
+        } catch (_) {}
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Re-scans for headsets, then reloads their info and names.
+  Future<void> _refresh() async {
+    setState(() => _busy = true);
+    await widget.state.refreshDevices();
+    _infos.clear();
+    _configs.clear();
+    await _loadInfos();
+    setState(() => _busy = false);
+  }
+
+  /// Rename dialog: type a name, Save writes it to the headset's
+  /// config file. Saving an empty name clears the custom name and
+  /// the app goes back to showing the model (Quest 2, Quest 1...).
+  /// The name is read back on the next connect, so Linux and
+  /// Android stay in step without a sync button.
+  Future<void> _renameHeadset(BuildContext context, AppState s, String serial) async {
+    final controller = TextEditingController(text: _configs[serial]?.name ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Name this headset'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'e.g. My Quest 2',
+            helperText: 'Saved on the headset, so every computer and phone shows the same name. Leave it empty to go back to the model name.',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, controller.text.trim()), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (name == null) return;
+    final cfg = await s.renameHeadset(name, serial: serial);
+    if (cfg != null && mounted) {
+      setState(() => _configs[serial] = cfg);
+    }
+    if (context.mounted) showResult(context, cfg != null, cfg != null ? (name.isEmpty ? 'Custom name cleared.' : 'Headset renamed to "$name".') : 'Could not rename the headset.');
+  }
+
+  /// Group the raw adb list into one card per headset. A USB entry
+  /// and a Wi-Fi entry are the SAME headset when the USB headset's
+  /// own Wi-Fi address matches the Wi-Fi entry's address; a Wi-Fi
+  /// entry with no USB twin (or no readable address) stays its own
+  /// card, so a second real headset is never folded into the first.
+  List<_DeviceGroup> _groups(AppState s) {
+    final usb = s.devices.where((d) => d.transport != 'wifi').toList();
+    final wifi = s.devices.where((d) => d.transport == 'wifi').toList();
+    final paired = <QuestDevice>{};
+    final groups = <_DeviceGroup>[];
+    for (final u in usb) {
+      QuestDevice? twin;
+      final ip = _infos[u.serial]?.wifiIp;
+      if (ip != null) {
+        for (final w in wifi) {
+          if (!paired.contains(w) && w.serial.split(':').first == ip) {
+            twin = w;
+            paired.add(w);
+            break;
+          }
+        }
+      }
+      groups.add(_DeviceGroup(primary: u, secondary: twin));
+    }
+    for (final w in wifi) {
+      if (!paired.contains(w)) groups.add(_DeviceGroup(primary: w));
+    }
+    return groups;
+  }
+
+  /// One headset's card: name (with its own rename button), serial,
+  /// battery and storage, and a chip per connection showing how it
+  /// is hooked up right now. When the same headset is on USB and
+  /// Wi-Fi at once, the card says the USB cable can come out.
+  Widget _deviceCard(BuildContext context, AppState s, _DeviceGroup g) {
+    final primary = g.primary;
+    final secondary = g.secondary;
+    final selected = s.selectedDevice?.serial == primary.serial ||
+        (secondary != null && s.selectedDevice?.serial == secondary.serial);
+    final info = _infos[primary.serial] ?? (secondary != null ? _infos[secondary.serial] : null);
+    final profile = s.profileFor(primary.serial);
+    final name = _configs[primary.serial]?.name ?? primary.displayName;
+    String stateLabel(String state) => state == 'device'
+        ? 'Ready'
+        : state == 'offline'
+            ? 'Offline'
+            : state == 'unauthorized'
+                ? 'Waiting for approval'
+                : state;
+    final bothReady = secondary != null && primary.state == 'device' && secondary.state == 'device';
+    final lines = [
+      primary.serial,
+      if (secondary != null) secondary.serial,
+      if (info != null) 'Battery ${info.batteryLevel}%  •  ${info.storageUsedGb} / ${info.storageTotalGb} GB used',
+      if (profile != null) 'Profile: $profile',
+    ].join('\n');
+    return Card(
+      child: ListTile(
+        leading: Icon(primary.transport == 'wifi' ? Icons.wifi : Icons.usb, size: 32),
+        title: Row(children: [
+          Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
+          IconButton(
+            icon: const Icon(Icons.edit, size: 20),
+            tooltip: 'Rename this headset',
+            onPressed: () => _renameHeadset(context, s, primary.serial),
+          ),
+        ]),
+        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(lines),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final d in [primary, if (secondary != null) secondary])
+              Chip(
+                avatar: Icon(d.transport == 'wifi' ? Icons.wifi : Icons.usb, size: 16),
+                label: Text('${d.transport == 'wifi' ? 'Wi-Fi' : 'USB'} • ${stateLabel(d.state)}'),
+                backgroundColor: d.state == 'device' ? const Color(0xFF38BDF8) : const Color(0xFFF59E0B),
+                labelStyle: const TextStyle(color: Color(0xFF070B14), fontWeight: FontWeight.bold),
+              ),
+          ]),
+          if (bothReady) ...[
+            const SizedBox(height: 6),
+            const Row(children: [
+              Icon(Icons.info_outline, size: 16),
+              SizedBox(width: 6),
+              Expanded(child: Text('You can unplug the USB cable, this headset stays connected over Wi-Fi.')),
+            ]),
+          ],
+        ]),
+        trailing: selected ? const Icon(Icons.check_circle, color: Colors.green) : null,
+        onTap: () => s.selectDevice(primary),
+      ),
+    );
   }
 
   @override
+  /// Builds the dashboard: backend error card, headset card, the
+  /// Headsets list (the old Devices page, folded in), quick
+  /// actions, and the WiVRn setup prompt. Recent activity lives on
+  /// the Logs screen now, under App logs.
   Widget build(BuildContext context) {
     final s = widget.state;
     final info = s.deviceInfo;
@@ -167,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: const Text('Backend not found', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
                 subtitle: Text(s.backendError!, style: const TextStyle(color: Colors.black87)),
                 trailing: TextButton(
-                  onPressed: () => widget.goTo(8),
+                  onPressed: () => widget.goTo(9),
                   child: const Text('Setup'),
                 ),
               ),
@@ -198,7 +415,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 8),
                       Wrap(spacing: 12, children: [
-                        FilledButton.icon(onPressed: () => showConnectHeadsetDialog(context, s), icon: const Icon(Icons.usb), label: const Text('Connect with USB')),
+                        if (!Platform.isAndroid)
+                          FilledButton.icon(onPressed: () => showConnectHeadsetDialog(context, s), icon: const Icon(Icons.usb), label: const Text('Connect with USB')),
                         OutlinedButton.icon(onPressed: () => showConnectHeadsetDialog(context, s), icon: const Icon(Icons.wifi), label: const Text('Connect with Wi-Fi')),
                         OutlinedButton.icon(onPressed: () => s.refreshDevices(), icon: const Icon(Icons.refresh), label: const Text('Check again')),
                       ]),
@@ -208,8 +426,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         const Icon(Icons.headset, size: 40),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(dev.displayName, style: Theme.of(context).textTheme.titleLarge),
-                          Text('${dev.serial}  •  ${dev.transport == 'wifi' ? 'Wi-Fi' : 'USB'}', style: Theme.of(context).textTheme.bodySmall),
+                          Text(s.headsetName, style: Theme.of(context).textTheme.titleLarge),
+                          Text(
+                            '${dev.serial}  •  ${dev.transport == 'wifi' ? 'Wi-Fi' : 'USB'}${s.headsetConfig?.name != null ? '  •  ${dev.displayName}' : ''}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
                         ])),
                         Chip(
                           label: Text(
@@ -246,6 +467,45 @@ class _HomeScreenState extends State<HomeScreen> {
                     ]),
             ),
           ),
+          const SizedBox(height: 16),
+          const SectionTitle('Headsets', subtitle: 'USB is the most reliable. Wi-Fi is handy once it is paired. Both need Developer Mode turned on first.'),
+          Row(children: [
+            FilledButton.icon(onPressed: _busy ? null : _refresh, icon: const Icon(Icons.refresh), label: const Text('Refresh')),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(onPressed: () => showConnectHeadsetDialog(context, s), icon: const Icon(Icons.headset), label: const Text('Connect a headset')),
+          ]),
+          const SizedBox(height: 12),
+          if (_busy) const LinearProgressIndicator(),
+          if (s.devices.isEmpty)
+            const EmptyState(
+              icon: Icons.headset_off,
+              title: 'No headset connected',
+              body: 'Nothing here is sample data. Plug the headset in with USB, or connect it over Wi-Fi, then tap Refresh.',
+            )
+          else
+            CardGrid(cards: _groups(s).map((g) => _deviceCard(context, s, g)).toList()),
+          if (s.devices.any((d) => d.state == 'unauthorized'))
+            Card(
+              color: Colors.orange.shade100,
+              child: const ListTile(
+                leading: Icon(Icons.warning, color: Colors.black87),
+                title: Text('Headset is waiting for your OK', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+                subtitle: Text('Put the headset on and tap Allow on the "Allow USB debugging?" message. Then tap Refresh.', style: TextStyle(color: Colors.black87)),
+              ),
+            ),
+          const SizedBox(height: 12),
+          Row(children: [
+            OutlinedButton.icon(
+              onPressed: s.selectedDevice == null ? null : () async {
+                final r = await s.backend.disconnectWifi(s.selectedDevice!.serial);
+                if (mounted) showResult(context, r.ok, r.message);
+              },
+              icon: const Icon(Icons.wifi_off),
+              label: const Text('Disconnect Wi-Fi / turn wireless ADB off'),
+            ),
+          ]),
+          const Text('Tip: wireless debugging turns off when the headset restarts. If Wi-Fi stops working, pair again from this screen.', style: TextStyle(fontSize: 13)),
+          const SizedBox(height: 16),
           const SectionTitle('Quick actions', subtitle: 'The things you will use most.'),
           Wrap(spacing: 12, runSpacing: 12, children: [
             _QuickAction(icon: Icons.cast, label: 'Mirror screen', onTap: () => widget.goTo(5)),
@@ -257,7 +517,7 @@ class _HomeScreenState extends State<HomeScreen> {
             }),
             _QuickAction(icon: Icons.file_download, label: 'Install APK', onTap: () => widget.goTo(2)),
             _QuickAction(icon: Icons.folder, label: 'Open Files', onTap: () => widget.goTo(3)),
-            _QuickAction(icon: Icons.backup, label: 'Back up headset', onTap: () => widget.goTo(1)),
+            _QuickAction(icon: Icons.backup, label: 'Back up headset', onTap: () => widget.goTo(4)),
             _QuickAction(icon: Icons.refresh, label: 'Refresh', onTap: () => s.refreshDevices()),
           ]),
           const SizedBox(height: 16),
@@ -280,19 +540,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ]),
                 ),
               ),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Recent activity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  const SizedBox(height: 8),
-                  if (s.activity.isEmpty)
-                    const Text('Nothing yet. Install an app or take a screenshot and it will show up here.')
-                  else
-                    ...s.activity.take(8).map((a) => ListTile(leading: const Icon(Icons.check_circle_outline), title: Text(a))),
-                ]),
-              ),
-            ),
           ]),
           const SizedBox(height: 16),
           const Text('No account. No ads. Nothing is uploaded anywhere. Everything here runs on this computer.', style: TextStyle(fontSize: 13)),
@@ -302,12 +549,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// One quick-action tile on Home: an icon, a label, and a tap target.
 class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   const _QuickAction({required this.icon, required this.label, required this.onTap});
   @override
+  /// Builds one quick-action tile.
   Widget build(BuildContext context) => Card(
         child: InkWell(
           onTap: onTap,
@@ -325,144 +574,12 @@ class _QuickAction extends StatelessWidget {
       );
 }
 
-// ---- Devices --------------------------------------------------------------
-class DevicesScreen extends StatefulWidget {
-  final AppState state;
-  const DevicesScreen({required this.state, super.key});
-  @override
-  State<DevicesScreen> createState() => _DevicesScreenState();
+/// One headset as the Home screen's Headsets list shows it: the
+/// primary entry (USB when there is one) plus the Wi-Fi entry when
+/// it is the SAME headset, matched by the headset's own Wi-Fi address.
+class _DeviceGroup {
+  final QuestDevice primary;
+  final QuestDevice? secondary;
+  const _DeviceGroup({required this.primary, this.secondary});
 }
 
-class _DevicesScreenState extends State<DevicesScreen> {
-  bool _busy = false;
-  final Map<String, DeviceInfo> _infos = {};
-
-  @override
-  @override
-  void initState() {
-    super.initState();
-    _loadInfos();
-  }
-
-  Future<void> _loadInfos() async {
-    for (final d in widget.state.devices) {
-      if (_infos.containsKey(d.serial)) continue;
-      try {
-        final info = await widget.state.backend.deviceInfo(d.serial);
-        if (info != null) _infos[d.serial] = info;
-      } catch (_) {}
-    }
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _busy = true);
-    await widget.state.refreshDevices();
-    await _loadInfos();
-    setState(() => _busy = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.state;
-    return ListenableBuilder(
-      listenable: s,
-      builder: (context, _) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Text('Devices', style: Theme.of(context).textTheme.headlineSmall),
-              const Spacer(),
-              FilledButton.icon(onPressed: _busy ? null : _refresh, icon: const Icon(Icons.refresh), label: const Text('Refresh')),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(onPressed: () => showConnectHeadsetDialog(context, s), icon: const Icon(Icons.headset), label: const Text('Connect a headset')),
-            ]),
-            const SizedBox(height: 8),
-            const Text('USB is the most reliable. Wi-Fi is handy once it is paired. Both need Developer Mode turned on first.'),
-            if (s.backendError != null) ...[
-              const SizedBox(height: 8),
-              Card(
-                color: Colors.orange.shade100,
-                child: ListTile(leading: const Icon(Icons.warning, color: Colors.black87), title: Text(s.backendError!, style: const TextStyle(color: Colors.black87))),
-              ),
-            ],
-            if (s.wifiNote != null) ...[
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.wifi),
-                  title: Text(s.wifiNote!),
-                  trailing: s.wifiNote!.startsWith('Wi-Fi setup did not work')
-                      ? TextButton(onPressed: () => s.retryWifiSetup(), child: const Text('Retry'))
-                      : null,
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            if (_busy) const LinearProgressIndicator(),
-            if (s.devices.isEmpty)
-              const EmptyState(
-                icon: Icons.headset_off,
-                title: 'No headset connected',
-                body: 'Nothing here is sample data. Plug the headset in with USB, or connect it over Wi-Fi, then tap Check again.',
-              )
-            else
-              CardGrid(cards: s.devices.map((d) {
-                final selected = s.selectedDevice?.serial == d.serial;
-                final info = _infos[d.serial];
-                final profile = s.profileFor(d.serial);
-                final subtitle = [
-                  d.serial,
-                  if (info != null) 'Battery ${info.batteryLevel}%  •  ${info.storageUsedGb} / ${info.storageTotalGb} GB used',
-                  if (profile != null) 'Profile: $profile',
-                ].join('\n');
-                return Card(
-                  child: ListTile(
-                    leading: Icon(d.transport == 'wifi' ? Icons.wifi : Icons.usb, size: 32),
-                    title: Text('${d.displayName}  •  ${d.transport == 'wifi' ? 'Wi-Fi' : 'USB'}'),
-                    subtitle: Text(subtitle),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Chip(
-                        label: Text(
-                          d.state == 'device' ? 'Ready' : d.state == 'offline' ? 'Offline' : d.state == 'unauthorized' ? 'Waiting for approval' : d.state,
-                          style: const TextStyle(color: Color(0xFF070B14), fontWeight: FontWeight.bold),
-                        ),
-                        backgroundColor: d.state == 'device' ? const Color(0xFF38BDF8) : const Color(0xFFF59E0B),
-                      ),
-                      const SizedBox(width: 8),
-                      if (selected) const Icon(Icons.check_circle, color: Colors.green),
-                    ]),
-                    onTap: () => s.selectDevice(d),
-                  ),
-                );
-              }).toList()),
-            if (s.devices.any((d) => d.state == 'unauthorized'))
-              Card(
-                color: Colors.orange.shade100,
-                child: const ListTile(
-                  leading: Icon(Icons.warning, color: Colors.black87),
-                  title: Text('Headset is waiting for your OK', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-                  subtitle: Text('Put the headset on and tap Allow on the "Allow USB debugging?" message. Then tap Refresh.', style: TextStyle(color: Colors.black87)),
-                ),
-              ),
-            const SizedBox(height: 12),
-            Row(children: [
-              OutlinedButton.icon(
-                onPressed: s.selectedDevice == null ? null : () async {
-                  final r = await s.backend.disconnectWifi(s.selectedDevice!.serial);
-                  if (mounted) showResult(context, r.ok, r.message);
-                },
-                icon: const Icon(Icons.wifi_off),
-                label: const Text('Disconnect Wi-Fi / turn wireless ADB off'),
-              ),
-            ]),
-            const Text('Tip: wireless debugging turns off when the headset restarts. If Wi-Fi stops working, pair again from this screen.', style: TextStyle(fontSize: 13)),
-            const SizedBox(height: 16),
-          ]),
-        ),
-      ),
-    );
-  }
-
-}

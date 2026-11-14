@@ -27,6 +27,20 @@ class AppState extends ChangeNotifier {
   QuestDevice? selectedDevice;
   List<QuestDevice> devices = [];
   DeviceInfo? deviceInfo;
+  /// Android only: the headset's saved Wi-Fi address (`ip:port`).
+  /// The phone has no adb server, so there is no discovery: the
+  /// app probes this address directly. Saved to headset-addr.txt
+  /// in the app's files dir on connect.
+  String? androidAddr;
+  /// The selected headset's own config file (headset.cfg on the
+  /// headset), read on every refresh. Null when no headset is
+  /// selected; HeadsetConfig.absent when it has never been synced.
+  /// The custom name in here is what the UI shows for the headset.
+  HeadsetConfig? headsetConfig;
+  /// The name shown for the selected headset: the custom name from
+  /// its config file when it has one, else the model name.
+  String get headsetName =>
+      headsetConfig?.name ?? deviceInfo?.displayName ?? selectedDevice?.displayName ?? 'No headset';
   /// In-memory icon cache: package -> AppIcon, or null when the app
   /// has no launcher icon / its icon could not be read (so the UI
   /// stops asking for it). Filled lazily as app rows appear on screen;
@@ -66,6 +80,9 @@ class AppState extends ChangeNotifier {
   /// the Device and Settings screen).
   HealthInfo? health;
 
+  // ---- Profiles ----
+  /// The per-headset profiles file on Linux, or null on Android (no
+  /// file there yet).
   Future<File?> _deviceProfilesFile() async {
     if (!Platform.isLinux) return null;
     final home = Platform.environment['HOME'];
@@ -73,6 +90,9 @@ class AppState extends ChangeNotifier {
     return File('$home/.config/quest-companion/device-profiles.json');
   }
 
+  /// Read the saved per-headset profiles from disk (Linux only;
+  /// Android keeps them in memory). A missing file means no saved
+  /// profiles yet.
   Future<void> loadDeviceProfiles() async {
     final f = await _deviceProfilesFile();
     if (f == null) return;
@@ -86,6 +106,8 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Write the per-headset profiles to disk. Quietly does nothing
+  /// on Android or when the file cannot be written.
   Future<void> _saveDeviceProfiles() async {
     final f = await _deviceProfilesFile();
     if (f == null) return;
@@ -133,23 +155,56 @@ class AppState extends ChangeNotifier {
 
   BackendService get backend => _backend;
 
+  // ---- Activity log ----
+  /// Add one line to the activity log, newest first, capped at 200 lines.
   void log(String entry) {
-    activity.insert(0, entry);
-    if (activity.length > 40) activity.removeLast();
+    final now = DateTime.now();
+    final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    activity.insert(0, '$time  $entry');
+    if (activity.length > 200) activity.removeLast();
     notifyListeners();
   }
 
-  /// Find questctl (custom path from Setup, else the defaults) and
+  /// Empty the activity log.
+  void clearActivity() {
+    activity.clear();
+    notifyListeners();
+  }
+
+  // ---- Backend setup ----
+  /// Find questctl (custom path from Setup) and
   /// use it. When it cannot be found, backendError is set and the UI
   /// shows an error state; nothing falls back to sample data.
-  /// On Android there is no questctl binary to spawn yet (the Android
-  /// Wi-Fi transport is being built; see flutter_app/README.md):
-  /// say that plainly instead of the Linux build instructions.
+  /// On Android the arm64 questctl bundled in the app is extracted
+  /// to the app's files dir and used over Wi-Fi (direct transport);
+  /// there is no adb server on a phone, so USB discovery does not
+  /// exist there and the headset is found by its saved Wi-Fi address.
   Future<void> initBackend({String? path}) async {
     if (Platform.isAndroid) {
-      backendError =
-          'The Android app cannot reach a headset yet. The Wi-Fi transport that talks to the Quest over Wi-Fi is being built; until then, use the Linux app on a PC. Everything offline in this app (Help, Setup) still works.';
+      final extracted = await RealBackend.extractAndroidCli();
+      if (extracted == null) {
+        backendError =
+            'The Android backend could not be set up (the bundled questctl could not be extracted). Reinstall the app; if it still fails, use the Linux app on a PC.';
+        notifyListeners();
+        return;
+      }
+      final (cliPath, docsDir) = extracted;
+      final backend = RealBackend(cliPath)..androidHome = docsDir;
+      _backend = backend;
+      backendPath = cliPath;
+      backendError = null;
+      log('Real backend connected ($cliPath)');
+      // The headset's Wi-Fi address, saved from the last connect.
+      final addrFile = File('$docsDir/headset-addr.txt');
+      if (await addrFile.exists()) {
+        final saved = (await addrFile.readAsString()).trim();
+        if (saved.isNotEmpty) {
+          androidAddr = saved;
+          backend.directAddr = saved;
+        }
+      }
       notifyListeners();
+      await refreshDevices();
       return;
     }
     backendPath = path ?? backendPath;
@@ -175,6 +230,7 @@ class AppState extends ChangeNotifier {
     await initBackend(path: path.trim().isEmpty ? null : path.trim());
   }
 
+  /// Switch the design direction (theme).
   void setDesign(DesignDirection d) {
     design = d;
     notifyListeners();
@@ -183,6 +239,7 @@ class AppState extends ChangeNotifier {
   /// Rooted: include app data (/data/data) in app backups.
   /// On automatically when root is detected, no setting to change.
   bool backupDataByDefault = false;
+  /// Turn on or off including app data in backups by default.
   void setBackupDataByDefault(bool v) {
     backupDataByDefault = v;
     notifyListeners();
@@ -191,9 +248,47 @@ class AppState extends ChangeNotifier {
   /// Apps view: false = list (default), true = tiles (grid).
   /// Swap with the List / Tiles toggle on the Apps screen.
   bool appsTiles = false;
+  /// Apps view: list (false) or tiles (true).
   void setAppsTiles(bool tiles) {
     appsTiles = tiles;
     notifyListeners();
+  }
+
+  /// Library view: false = list (default), true = tiles (grid).
+  /// Same toggle as the Apps tab, on the Library tab.
+  bool libraryTiles = false;
+  /// Library view: list (false) or tiles (true).
+  void setLibraryTiles(bool tiles) {
+    libraryTiles = tiles;
+    notifyListeners();
+  }
+
+  /// Library icons, keyed by the entry's path (one entry can share
+  /// a package with another version, so package alone is not a
+  /// key). Null means no launcher icon, so the UI stops asking.
+  final Map<String, AppIcon?> libraryIconCache = {};
+  final Set<String> _libraryIconLoading = {};
+
+  // ---- Icons ----
+  /// Load one library entry's icon from the APK already on this
+  /// computer (backend `library icon`). No headset needed, and no
+  /// re-extract on repeat loads: the backend caches the file on
+  /// disk per package+version, and this cache holds the result
+  /// in memory for the session.
+  Future<AppIcon?> libraryIcon(LibraryEntry entry) async {
+    if (libraryIconCache.containsKey(entry.path)) return libraryIconCache[entry.path];
+    if (_libraryIconLoading.contains(entry.path)) return null;
+    _libraryIconLoading.add(entry.path);
+    AppIcon? icon;
+    try {
+      icon = await _backend.libraryIcon(entry);
+    } catch (_) {
+      icon = null;
+    }
+    _libraryIconLoading.remove(entry.path);
+    libraryIconCache[entry.path] = icon;
+    notifyListeners();
+    return icon;
   }
 
   /// Load one app's icon (real label + local file), cached in memory
@@ -217,8 +312,46 @@ class AppState extends ChangeNotifier {
     return icon;
   }
 
+  // ---- Devices ----
+  /// Re-read the headset list and the selected headset's info, config,
+  /// WiVRn state and Wi-Fi setup. Android probes the saved Wi-Fi
+  /// address; Linux lists adb devices and retries saved Wi-Fi IPs when
+  /// USB finds nothing.
   Future<void> refreshDevices() async {
     try {
+      if (Platform.isAndroid) {
+        // No discovery on a phone: probe the saved Wi-Fi address
+        // directly. A failed probe means no headset (or the wrong
+        // address); the Connect dialog is the way back.
+        if (androidAddr != null && androidAddr!.isNotEmpty) {
+          final info = await _backend.deviceInfo(androidAddr!);
+          if (info != null) {
+            final d = QuestDevice(
+              serial: androidAddr!,
+              state: 'device',
+              model: info.model,
+              device: '',
+              headsetModel: info.headsetModel,
+              transport: 'wifi',
+            );
+            devices = [d];
+            selectedDevice = d;
+            deviceInfo = info;
+            headsetConfig = await _backend.headsetConfig(androidAddr!);
+            rootStatus = null;
+            controllers = null;
+            updateBlock = null;
+            notifyListeners();
+            return;
+          }
+        }
+        devices = [];
+        selectedDevice = null;
+        deviceInfo = null;
+        headsetConfig = null;
+        notifyListeners();
+        return;
+      }
       devices = await _backend.listDevices();
       if (devices.isEmpty) {
         // No USB device: try the saved Wi-Fi IPs before giving up.
@@ -238,6 +371,7 @@ class AppState extends ChangeNotifier {
       }
       if (selectedDevice != null) {
         deviceInfo = await _backend.deviceInfo(selectedDevice!.serial);
+        headsetConfig = await _backend.headsetConfig(selectedDevice!.serial);
         await checkWivrnSetup();
         rootStatus = null;
         controllers = null;
@@ -245,12 +379,53 @@ class AppState extends ChangeNotifier {
         await _maybeSetupWifi(selectedDevice!);
       } else {
         deviceInfo = null;
+        headsetConfig = null;
       }
     } catch (e) {
       devices = [];
       deviceInfo = null;
+      headsetConfig = null;
     }
     notifyListeners();
+  }
+
+  /// Save a custom name for a headset (empty clears it). Targets
+  /// the given serial, or the selected headset when none is given.
+  /// The name lives in the headset's own config file, so every
+  /// computer and phone sees it on the next connect. Returns the
+  /// saved config, or null when the backend could not write it.
+  Future<HeadsetConfig?> renameHeadset(String name, {String? serial}) async {
+    final target = serial ?? selectedDevice?.serial;
+    if (target == null) return null;
+    final cfg = await _backend.headsetConfigSetName(target, name);
+    if (cfg == null) return null;
+    if (target == selectedDevice?.serial) {
+      headsetConfig = cfg;
+      notifyListeners();
+    }
+    return cfg;
+  }
+
+  // ---- Wi-Fi ----
+  /// Android only: connect to the headset over Wi-Fi with the
+  /// direct transport. Sets the address first (the pair/connect
+  /// call itself needs it), then saves it on success so the next
+  /// launch probes the same headset. The port is 5555 for plain
+  /// wireless ADB, or the pairing port with a 6-digit code.
+  Future<BackendResult> connectWifiDirect(String ip, String port, String code) async {
+    final addr = '${ip.trim()}:${port.trim()}';
+    androidAddr = addr;
+    final backend = _backend;
+    if (backend is RealBackend) backend.directAddr = addr;
+    final r = await _backend.pairWifi(ip.trim(), port.trim(), code.trim());
+    if (r.ok) {
+      try {
+        final home = (backend is RealBackend) ? backend.androidHome : null;
+        if (home != null) await File('$home/headset-addr.txt').writeAsString(addr);
+      } catch (_) {}
+      await refreshDevices();
+    }
+    return r;
   }
 
   /// Automatic wireless setup, once per device per session: when a
@@ -290,11 +465,15 @@ class AppState extends ChangeNotifier {
     await _maybeSetupWifi(d);
   }
 
+  // ---- WiVRn ----
   /// Check the WiVRn first-run state for the selected headset:
   /// is the client app on it, is the server on this PC, did the
   /// user already say no. Runs once per connection; the Home card
   /// and the PC VR screen read these three fields.
   Future<void> checkWivrnSetup() async {
+    // No PC VR on a phone: WiVRn is a Linux PC server, so there is
+    // nothing to check and the first-run card never appears.
+    if (Platform.isAndroid) return;
     final d = selectedDevice;
     if (d == null || _wivrnChecked) return;
     try {
@@ -337,6 +516,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Remember that the user said no to WiVRn setup, so the
+  /// first-run card stops appearing.
   Future<void> declineWivrn() async {
     final d = selectedDevice;
     if (d == null) return;
@@ -347,6 +528,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- Health and root ----
   /// Load battery / health for the selected device.
   Future<void> loadHealth() async {
     final d = selectedDevice;
@@ -379,6 +561,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Pick a headset, then refresh and apply the profile saved for
+  /// it, if it has one.
   void selectDevice(QuestDevice d) {
     if (selectedDevice?.serial != d.serial) {
       _wivrnChecked = false;

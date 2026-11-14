@@ -1,11 +1,14 @@
 //! Device discovery and device info, built from `getprop` / `dumpsys
 //! battery` / `df` / `wm size`. No Meta API, no account.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::transport::{AdbTransport, Device, Target};
 use serde::Serialize;
 use std::collections::HashMap;
 
+/// List every device adb can see right now (USB and Wi-Fi), with its
+/// state. An empty list means nothing is connected or authorized, not
+/// an error.
 pub fn list_devices(t: &dyn AdbTransport) -> Result<Vec<Device>> {
     t.list_devices()
 }
@@ -47,6 +50,12 @@ pub struct DeviceInfo {
     pub storage: StorageInfo,
     pub resolution: Option<String>,
     pub density: Option<i32>,
+    /// The headset's own Wi-Fi (wlan0) IPv4 address, when it has
+    /// one. Used to spot that a USB entry and a Wi-Fi entry are
+    /// the SAME headset, so the UI can show one card instead of
+    /// two. Best effort: None when Wi-Fi is off or unreadable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wifi_ip: Option<String>,
 }
 
 /// Light headset classification: one `getprop` dump, no battery/df/wm
@@ -179,13 +188,32 @@ pub fn parse_wm_density(text: &str) -> Option<i32> {
     None
 }
 
+/// Everything the Setup and Health screens show about one headset:
+/// model, Android version, battery, storage, screen size, and which
+/// features this model supports. Built from `getprop`, `dumpsys
+/// battery`, `df`, and `wm size` on the headset.
 pub fn device_info(t: &dyn AdbTransport, serial: &str) -> Result<DeviceInfo> {
     let target = Target::serial(serial);
-    let props = parse_getprop(&t.shell(&target, "getprop")?.stdout);
+    // A failed shell (device gone, connection refused) must be an
+    // error, not a zeroed DeviceInfo: the parsers below return 0
+    // for empty output, and the UI would show "Battery 0% • 0 / 0
+    // GB" for a headset it cannot even reach.
+    let getprop = t.shell(&target, "getprop")?;
+    if !getprop.ok() {
+        return Err(Error(format!(
+            "could not read device info from {serial}: {}",
+            getprop.stderr.trim()
+        )));
+    }
+    let props = parse_getprop(&getprop.stdout);
     let battery = parse_battery(&t.shell(&target, "dumpsys battery")?.stdout);
     let storage = parse_df(&t.shell(&target, "df /sdcard")?.stdout);
     let resolution = parse_wm_size(&t.shell(&target, "wm size")?.stdout);
     let density = parse_wm_density(&t.shell(&target, "wm density")?.stdout);
+    // Best effort: Wi-Fi off, or the commands missing, just means
+    // no match. Reuses the wireless module's lookup (ip addr, then
+    // ip route, then the dhcp getprop).
+    let wifi_ip = crate::wireless::wifi_ip(t, serial);
     let headset = crate::headset::classify(
         props.get("ro.product.model").map(|s| s.as_str()).unwrap_or(""),
         props.get("ro.product.device").map(|s| s.as_str()).unwrap_or(""),
@@ -204,6 +232,7 @@ pub fn device_info(t: &dyn AdbTransport, serial: &str) -> Result<DeviceInfo> {
         storage,
         resolution,
         density,
+        wifi_ip,
     })
 }
 
@@ -285,6 +314,10 @@ pub fn parse_controllers(text: &str) -> Vec<String> {
     out
 }
 
+/// Which controllers are paired right now, from `getevent -l` (with a
+/// `dumpsys input` fallback). Controllers that are asleep do not answer,
+/// so they show as absent until woken; that is a headset limit, not a
+/// bug. No battery level is readable over adb.
 pub fn controllers(t: &dyn AdbTransport, serial: &str) -> Result<ControllersInfo> {
     let target = Target::serial(serial);
     // getevent -l streams forever; timeout 3 s captures the device

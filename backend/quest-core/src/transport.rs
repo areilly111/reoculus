@@ -32,6 +32,9 @@ pub enum DeviceState {
 }
 
 impl DeviceState {
+    /// The adb word for this device state (`device`, `unauthorized`,
+    /// `offline`, `no permissions`, or `unknown`). Used when parsing and
+    /// printing `adb devices` output.
     pub fn as_str(&self) -> &'static str {
         match self {
             DeviceState::Device => "device",
@@ -77,6 +80,9 @@ pub struct CmdOutput {
 }
 
 impl CmdOutput {
+    /// True when the command exited with code 0. Some headset commands
+    /// report success in their text rather than their exit code, so
+    /// callers that care check the output text too.
     pub fn ok(&self) -> bool {
         self.code == 0
     }
@@ -91,12 +97,16 @@ pub struct Target {
 }
 
 impl Target {
+    /// A target that addresses one headset by its adb serial. Use for
+    /// USB devices and for Wi-Fi devices shown as a serial.
     pub fn serial(s: &str) -> Self {
         Target {
             serial: Some(s.to_string()),
             addr: None,
         }
     }
+    /// A target that addresses one headset by `ip:port`. Use for direct
+    /// (libadb) transport and Wi-Fi connections.
     pub fn addr(a: &str) -> Self {
         Target {
             serial: None,
@@ -254,6 +264,9 @@ pub struct AdbBinaryTransport {
 }
 
 impl AdbBinaryTransport {
+    /// Build the binary transport: find the adb binary and make sure
+    /// this computer has an ADB key pair (one is created when missing).
+    /// The key is what the headset's "Allow USB debugging?" prompt shows.
     pub fn new() -> Result<Self> {
         let _key = crate::keys::ensure_keypair()?;
         Ok(AdbBinaryTransport {
@@ -261,11 +274,14 @@ impl AdbBinaryTransport {
         })
     }
 
+    /// Same as `new`, but with an explicit adb binary instead of the one
+    /// found on PATH. The key pair is still ensured first.
     pub fn with_path(adb: PathBuf) -> Result<Self> {
         let _key = crate::keys::ensure_keypair()?;
         Ok(AdbBinaryTransport { adb })
     }
 
+    /// The adb binary this transport runs.
     pub fn adb_path(&self) -> &Path {
         &self.adb
     }
@@ -714,12 +730,19 @@ impl AdbTransport for DirectTransport {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Transport kind (which implementation `make_transport` builds)
+// ---------------------------------------------------------------------------
+
 pub enum TransportKind {
     Binary,
     Direct,
 }
 
 impl TransportKind {
+    /// Parse a transport name: `binary` (or `adb`) for the adb binary,
+    /// `direct` (or `libadb`) for the built-in libadb transport. Anything
+    /// else is an error naming the two valid choices.
     pub fn from_str(s: &str) -> Result<Self> {
         match s {
             "binary" | "adb" => Ok(TransportKind::Binary),
@@ -729,6 +752,9 @@ impl TransportKind {
             ))),
         }
     }
+    /// The transport from the `QUEST_TRANSPORT` environment variable:
+    /// `direct` (or `libadb`) picks the direct transport, anything else
+    /// (including unset) picks the adb binary.
     pub fn from_env() -> TransportKind {
         match std::env::var("QUEST_TRANSPORT").as_deref() {
             Ok("direct") | Ok("libadb") => TransportKind::Direct,
@@ -737,6 +763,8 @@ impl TransportKind {
     }
 }
 
+/// Build the transport of the given kind: the adb binary, or the
+/// built-in direct transport. This is the one place callers pick a transport.
 pub fn make_transport(kind: &TransportKind) -> Result<Box<dyn AdbTransport>> {
     match kind {
         TransportKind::Binary => Ok(Box::new(AdbBinaryTransport::new()?)),

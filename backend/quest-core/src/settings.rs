@@ -42,10 +42,19 @@ pub fn allowed_keys(model: &str) -> &'static [&'static str] {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Single settings: read and write one key
+// ---------------------------------------------------------------------------
+
+/// The fastest refresh rate this headset model supports, in Hz. Quest 1
+/// caps at 72; see `classify` in headset.rs for the per-model table.
 pub fn max_refresh_rate(model: &str) -> u32 {
     crate::headset::classify(model, "").max_refresh_rate()
 }
 
+/// True when a setting key is a Quest `debug.oculus.*` setprop (read
+/// with `getprop`, written with `setprop`) rather than a plain Android
+/// setting (read with `settings get`).
 pub fn is_quest_key(key: &str) -> bool {
     key.starts_with("debug.oculus.")
 }
@@ -55,6 +64,10 @@ pub struct SettingResult {
     pub warning: Option<String>,
 }
 
+/// Read one setting from the headset. Quest keys come from `getprop`;
+/// anything else is read from the Android settings table (`global:`,
+/// `secure:`, or `system:` prefix picks the table, default `system`).
+/// Returns the value plus a warning when one applies.
 pub fn get_setting(
     t: &dyn AdbTransport,
     serial: &str,
@@ -83,6 +96,12 @@ pub fn get_setting(
     })
 }
 
+/// Write one setting on the headset. Quest keys are checked against the
+/// allow-list for this model first (unknown keys are refused, except
+/// `debug.oculus.custom.*`, the power-user escape hatch), and the refresh
+/// rate is capped at the model's max. Quest setprops are volatile: they
+/// reset when the headset restarts, so the UI re-applies them on connect.
+/// Returns the value that was set plus a warning when one applies.
 pub fn set_setting(
     t: &dyn AdbTransport,
     serial: &str,
@@ -162,6 +181,10 @@ pub struct Profile {
     pub full_rate_capture: Option<u32>,
 }
 
+/// The built-in performance profiles (balanced, performance,
+/// battery-saver, high-refresh), as a fresh list each call. Custom
+/// profiles saved by the user are layered on top by `load_profiles`,
+/// never by this function.
 pub fn builtin_profiles() -> Vec<Profile> {
     vec![
         Profile {
@@ -211,6 +234,10 @@ fn profiles_path() -> Result<std::path::PathBuf> {
     Ok(crate::keys::config_dir()?.join("profiles.json"))
 }
 
+/// All profiles: the built-ins plus any custom profiles saved on this
+/// computer. A custom profile with the same name as a built-in replaces
+/// it. Errors when the saved custom profiles file exists but cannot be
+/// read or parsed.
 pub fn load_profiles() -> Result<HashMap<String, Profile>> {
     let mut map: HashMap<String, Profile> = builtin_profiles()
         .into_iter()
@@ -243,6 +270,9 @@ pub fn profiles_for(model: &str) -> Result<HashMap<String, Profile>> {
     Ok(map)
 }
 
+/// Save (or replace) one custom profile on this computer, by name.
+/// Built-in profiles are never written to disk; they are always rebuilt
+/// by `builtin_profiles`.
 pub fn save_profile(profile: &Profile) -> Result<()> {
     let path = profiles_path()?;
     let mut map: HashMap<String, Profile> = HashMap::new();
@@ -259,6 +289,11 @@ pub struct AppliedProfile {
     pub warnings: Vec<String>,
 }
 
+/// Apply one profile to the headset, setting each field it defines
+/// (refresh rate, CPU and GPU levels, texture size, and the rest) one
+/// setting at a time. Returns what was applied plus any warnings. A
+/// value out of range (CPU level above 4, for example) fails the whole
+/// apply, and the refresh rate is capped at the model's max.
 pub fn apply_profile(
     t: &dyn AdbTransport,
     serial: &str,

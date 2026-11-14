@@ -129,6 +129,11 @@ fn library_by_package() -> std::collections::HashMap<String, String> {
     map
 }
 
+/// Back up the whole headset into a new dated folder under the backup
+/// root (or `out_dir` when given): settings, Guardian data, Wi-Fi
+/// configs, and an inventory of installed apps pointing at their library
+/// backups. It does not re-pull every APK; see the file header for what
+/// it is not. Returns a report of what was saved.
 pub fn device_backup(
     t: &dyn AdbTransport,
     serial: &str,
@@ -171,6 +176,7 @@ pub fn device_backup(
         },
         resolution: None,
         density: None,
+        wifi_ip: None,
     });
     let mut steps: Vec<ManifestStep> = Vec::new();
     let mut files: Vec<crate::backup::ManifestFile> = Vec::new();
@@ -372,6 +378,8 @@ pub fn device_backup(
     })
 }
 
+/// Read the manifest.json of one device backup folder. Errors when the
+/// folder has no manifest or the manifest is not valid JSON.
 pub fn read_device_manifest(dir: &Path) -> Result<DeviceManifest> {
     let text = std::fs::read_to_string(dir.join("manifest.json")).map_err(|e| {
         Error(format!("{} is not a device backup folder (no manifest.json: {e})", dir.display()))

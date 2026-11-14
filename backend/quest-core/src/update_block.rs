@@ -57,6 +57,9 @@ fn is_disabled(t: &dyn AdbTransport, serial: &str, package: &str) -> bool {
     .unwrap_or(false)
 }
 
+/// Whether Horizon OS updates are blocked right now: every updater
+/// package disabled, plus whether the headset is rooted (blocking needs
+/// root). Never errors; when adb fails, the packages just read as not disabled.
 pub fn update_block_status(t: &dyn AdbTransport, serial: &str) -> UpdateBlockStatus {
     let rooted = crate::wireless::root_status(t, serial).rooted;
     let packages: Vec<PackageBlock> = UPDATER_PACKAGES

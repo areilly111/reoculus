@@ -244,12 +244,18 @@ fn known_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("known-wireless.json"))
 }
 
+/// The saved wireless headsets (serial, IP, port, last seen), newest
+/// first. Returns an empty list (not an error) when nothing is saved
+/// yet or the file cannot be read.
 pub fn load_known_wireless() -> Vec<KnownWireless> {
     let Ok(path) = known_path() else { return vec![] };
     let Ok(text) = std::fs::read_to_string(path) else { return vec![] };
     serde_json::from_str(&text).unwrap_or_default()
 }
 
+/// Remember one wireless headset (serial, IP, port) at the front of the
+/// saved list, dropping duplicates of the same headset and keeping at
+/// most 5 entries.
 pub fn save_known_wireless(serial: &str, ip: &str, port: u16) -> Result<()> {
     let dir = config_dir()?;
     std::fs::create_dir_all(&dir)?;
@@ -262,6 +268,7 @@ pub fn save_known_wireless(serial: &str, ip: &str, port: u16) -> Result<()> {
         port,
         last_seen: now,
     });
+    // Keep only the 5 most recent headsets.
     list.truncate(5);
     std::fs::write(known_path()?, serde_json::to_string_pretty(&list)?)?;
     Ok(())

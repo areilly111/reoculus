@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
+use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, headset_config, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, singularity, singularity_settings, snapshot, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -523,6 +523,22 @@ enum LibraryCmd {
         #[arg(long)]
         path: PathBuf,
     },
+    /// Get one library entry's launcher icon, from the APK already
+    /// on this computer (backup folder's base.apk, or an imported
+    /// APK / .apks / .xapk). No headset, no ADB pull. Save backups
+    /// have no APK, so this fails for them and the UI keeps the
+    /// save icon. Icon is cached under
+    /// ~/.cache/quest-companion/icons/<package>/<version>/.
+    Icon {
+        #[arg(long)]
+        path: PathBuf,
+        #[arg(long)]
+        package: String,
+        #[arg(long)]
+        version: String,
+        #[arg(long)]
+        kind: String,
+    },
 }
 #[derive(Subcommand)]
 enum DevicesCmd {
@@ -626,6 +642,32 @@ enum DevicesCmd {
         block: bool,
         #[arg(long)]
         unblock: bool,
+    },
+    /// Read the headset's own config file (/sdcard/ReOculus/
+    /// headset.cfg): custom name, model, settings snapshot, app
+    /// list. `present: false` when the headset has never been
+    /// synced (run config-write first).
+    ConfigRead {
+        #[arg(long)]
+        serial: String,
+    },
+    /// Write the custom name to the headset's config file, over adb
+    /// shell (no MTP, no root). Keeps the saved name unless --name
+    /// is given. Returns the config that was written.
+    ConfigWrite {
+        #[arg(long)]
+        serial: String,
+        /// Custom name to save for this headset.
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Set just the custom headset name. An empty name clears it
+    /// (deletes the config file) and reports present: false.
+    ConfigSetName {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        name: String,
     },
 }
 
@@ -848,6 +890,22 @@ enum FilesCmd {
         #[arg(long)]
         remote: String,
     },
+    /// Rename (or move) a file or folder under /sdcard/.
+    Rename {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        from: String,
+        #[arg(long)]
+        to: String,
+    },
+    /// Create a folder under /sdcard/ (parents included).
+    Mkdir {
+        #[arg(long)]
+        serial: String,
+        #[arg(long)]
+        remote: String,
+    },
 }
 
 #[derive(Args)]
@@ -1006,12 +1064,18 @@ enum ProfileCmd {
     },
 }
 
+// ---- Helpers ---------------------------------------------------------------
+
+/// Build the command target for one headset: its serial, plus the
+/// explicit `--addr` from the CLI when given (for Wi-Fi headsets reached by IP).
 fn target(cli: &Cli, serial: &str) -> Target {
     let mut t = Target::serial(serial);
     t.addr = cli.addr.clone();
     t
 }
 
+/// The headset's model string from `getprop ro.product.model`. Returns
+/// "unknown" (not an error) when the headset will not say.
 fn model_of(t: &dyn quest_core::AdbTransport, serial: &str) -> String {
     match t.shell(&Target::serial(serial), "getprop ro.product.model") {
         Ok(o) => {
@@ -1026,6 +1090,10 @@ fn model_of(t: &dyn quest_core::AdbTransport, serial: &str) -> String {
     }
 }
 
+/// The headset's Wi-Fi IP address: the source address of the route to
+/// 1.1.1.1 first, then the wlan0 address. Errors when neither answers.
+/// The 1.1.1.1 address is never contacted; it is only used to ask the
+/// routing table which interface would be used.
 fn device_ip(t: &dyn quest_core::AdbTransport, serial: &str) -> quest_core::Result<String> {
     let target = Target::serial(serial);
     let out = t.shell(&target, "ip route get 1.1.1.1")?;
@@ -1083,6 +1151,12 @@ fn run_shell_timeout(
     }
 }
 
+// ---- Command dispatcher ----------------------------------------------------
+
+/// Run one CLI command and return its JSON value. This is the big
+/// dispatcher: it builds the transport once, then matches the subcommand
+/// and calls into quest-core. Every command returns JSON except
+/// `logcat --follow`, which is handled in `main`.
 fn run(cli: &Cli) -> quest_core::Result<Value> {
     let kind = TransportKind::from_str(&cli.transport)?;
     let t = make_transport(&kind)?;
@@ -1446,6 +1520,33 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 let pkgs = update_block::set_update_block(t.as_ref(), serial, *block)?;
                 Ok(json!({ "blocked": *block, "packages": pkgs }))
             }
+            DevicesCmd::ConfigRead { serial } => {
+                match headset_config::read_config(t.as_ref(), serial)? {
+                    Some(cfg) => {
+                        let mut v = serde_json::to_value(cfg)?;
+                        v["present"] = serde_json::Value::Bool(true);
+                        Ok(v)
+                    }
+                    None => Ok(json!({ "present": false })),
+                }
+            }
+            DevicesCmd::ConfigWrite { serial, name } => {
+                let cfg = headset_config::write_config(t.as_ref(), serial, name.as_deref())?;
+                let mut v = serde_json::to_value(cfg)?;
+                v["present"] = serde_json::Value::Bool(true);
+                Ok(v)
+            }
+            DevicesCmd::ConfigSetName { serial, name } => {
+                match headset_config::set_name(t.as_ref(), serial, name)? {
+                    Some(cfg) => {
+                        let mut v = serde_json::to_value(cfg)?;
+                        v["present"] = serde_json::Value::Bool(true);
+                        Ok(v)
+                    }
+                    // Empty name deletes the file: no custom name.
+                    None => Ok(json!({ "present": false })),
+                }
+            }
         },
         Commands::Apps(a) => match &a.cmd {
             AppsCmd::List { serial, third_party, with_icons, with_sizes } => {
@@ -1549,6 +1650,14 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 files::delete(t.as_ref(), serial, remote)?;
                 Ok(json!({ "deleted": true, "remote": remote }))
             }
+            FilesCmd::Rename { serial, from, to } => {
+                files::rename(t.as_ref(), serial, from, to)?;
+                Ok(json!({ "renamed": true, "from": from, "to": to }))
+            }
+            FilesCmd::Mkdir { serial, remote } => {
+                files::mkdir(t.as_ref(), serial, remote)?;
+                Ok(json!({ "created": true, "remote": remote }))
+            }
         },
         Commands::Device(a) => match &a.cmd {
             DeviceCmd::Screenshot { serial, out } => {
@@ -1636,6 +1745,10 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 library::delete_library_entry(path)?;
                 Ok(json!({ "deleted": true, "path": path }))
             }
+            LibraryCmd::Icon { path, package, version, kind } => {
+                let icon = library::library_icon(path, package, version, kind)?;
+                Ok(serde_json::to_value(icon)?)
+            }
         },
         Commands::Settings(a) => match &a.cmd {
             SettingsCmd::Get { serial, key } => {
@@ -1683,6 +1796,8 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
     }
 }
 
+// ---- Entry point -----------------------------------------------------------
+
 /// `logcat --follow` streams raw lines; everything else is one JSON object.
 fn logcat_follow(serial: &str) -> ExitCode {
     let adb = match resolve_adb_path() {
@@ -1704,6 +1819,10 @@ fn logcat_follow(serial: &str) -> ExitCode {
     }
 }
 
+/// Entry point: parse the CLI, run the command as JSON, and print
+/// `{"ok": true, ...}` or `{"ok": false, "error": "..."}`. `logcat
+/// --follow` is the one exception: it streams raw log lines instead
+/// of JSON.
 fn main() -> ExitCode {
     let cli = Cli::parse();
     // Follow mode is the only non-JSON path, by design (see CONTRACT.md).

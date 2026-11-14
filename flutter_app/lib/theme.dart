@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 enum DesignDirection { proDark, lightFriendly, vrNeon }
 
 extension DesignDirectionInfo on DesignDirection {
+  /// Short id for saving the choice: pro-dark, light-friendly, vr-neon.
   String get id {
     switch (this) {
       case DesignDirection.proDark: return 'pro-dark';
@@ -19,6 +20,7 @@ extension DesignDirectionInfo on DesignDirection {
     }
   }
 
+  /// Name shown in Setup.
   String get name {
     switch (this) {
       case DesignDirection.proDark: return 'Clean Dark Pro';
@@ -27,6 +29,7 @@ extension DesignDirectionInfo on DesignDirection {
     }
   }
 
+  /// One line shown under the name in Setup.
   String get tagline {
     switch (this) {
       case DesignDirection.proDark: return 'Calm, professional, easy on the eyes for long sessions.';
@@ -35,6 +38,7 @@ extension DesignDirectionInfo on DesignDirection {
     }
   }
 
+  /// Plain words describing the look, shown in Setup.
   String get plainDescription {
     switch (this) {
       case DesignDirection.proDark:
@@ -54,6 +58,8 @@ extension DesignDirectionInfo on DesignDirection {
 }
 
 class AppTheme {
+  /// The full Material theme for one direction: colours, text sizes,
+  /// card shape.
   static ThemeData themeFor(DesignDirection d) {
     switch (d) {
       case DesignDirection.lightFriendly:
@@ -89,6 +95,14 @@ class AppTheme {
             onSurface: Color(0xFFF1F5F9),
           ),
           scaffoldBackgroundColor: const Color(0xFF070B14),
+          // Progress bars: the track used to render in full-bright
+          // secondary cyan, so a 79% full storage bar looked 100%
+          // full. Dim track, bright value, so the filled part is
+          // obvious at a glance.
+          progressIndicatorTheme: const ProgressIndicatorThemeData(
+            color: Color(0xFF38BDF8),
+            linearTrackColor: Color(0xFF24334D),
+          ),
           cardTheme: CardThemeData(
             color: const Color(0xFF111E33),
             elevation: 0,
@@ -128,6 +142,8 @@ class AppTheme {
     }
   }
 
+  /// The accent colour for one direction, used for highlights
+  /// outside the theme.
   static Color accentFor(DesignDirection d) {
     switch (d) {
       case DesignDirection.proDark: return const Color(0xFF3B82F6);

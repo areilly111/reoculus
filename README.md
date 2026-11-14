@@ -35,9 +35,9 @@ Every screen, rendered from the app's own widget tests with Lorem Ipsum placehol
 
 ![Home screen](assets/screenshots/home.png)
 
-### Devices
+The Headsets list (USB + Wi-Fi folded into one card per headset) lives on Home now, so there is no separate Devices page. The screenshot below shows one headset on USB and Wi-Fi at once, with the note that the cable can come out.
 
-![Devices screen](assets/screenshots/devices.png)
+![Headsets list](assets/screenshots/devices.png)
 
 ### Apps, list and tiles
 
@@ -158,11 +158,13 @@ flutter build apk --release
 
 ## 🤖 Android transport
 
-The APK today is the full UI, but headset features do not work on Android yet: there is no `questctl` binary to spawn there. The plan is to bundle `questctl` built for Android aarch64 and use the existing libadb DirectTransport over Wi-Fi. If you know that piece, contributions are very welcome.
+The APK now works on Android over Wi-Fi: it bundles the `questctl` binary built for Android aarch64 and talks to the headset with the libadb direct transport, so the same headset features work from a phone. PC VR is hidden on Android, because no phone can host VR streaming for a Quest. If you know that piece, contributions are very welcome.
 
 ## 📋 Status
 
-**0.2.25** (2026-11-13): Quest 1 support, because people on Reddit asked for it. The app now tells you which headset is connected (Quest 1 is codename monterey, Quest 2 is hollywood) and shows it by name on the Home, Devices, and Device and Settings screens. On a Quest 1, Singularity and Quest Home Switcher are hidden: Singularity only supports Quest 2, Pro, 3, and 3S, and Quest Home Switcher only lists Quest 2 / 3 / 3S. Everything else works: Lightning Launcher, WiVRn, apps, files, backups, mirror, and settings, with the refresh rate capped at 72 Hz and the mirror using h264 instead of h265. The Home apps card moved out of the Rooted section so it shows without root. One caveat: no literal Quest 1 getprop dump is published anywhere, so the monterey / Quest strings are inferred from the Quest 2/3 pattern and still need confirming on a real Quest 1.
+**0.2.26** (2026-11-13): The Android app works now, over Wi-Fi. It bundles the same backend the Linux app uses, built for a phone, so you can manage your headset from your phone on the same Wi-Fi: connect with the headset IP, port 5555, and no pairing code if the headset already listens on the old wireless debugging port. The first connect shows an "Allow USB debugging?" prompt in the headset for the phone's key, tap Allow. There is also a new headset config file: the app writes a plain text file called headset.cfg right on the headset (in /sdcard/ReOculus/), with just your custom headset name in it, so Linux and Android show the same name. Everything else, settings and apps, the app reads live from the headset, so there is nothing to sync by hand. Rename from the little pencil on the headset's card and it sticks everywhere. Small fix too: the storage bar looked full when it was not, because the empty part of the bar was bright cyan. It is dim slate now, so 88 of 112 GB reads as 88 of 112 GB. The Devices page is gone, folded into Home as the Headsets list: when the same headset is on USB and Wi-Fi at once you get one card, with a chip for each connection and a note that you can unplug the cable. Recent activity moved to Logs, under App logs. Files is a real file manager now, with dates, rename, delete for folders too, and a New folder button. The About card on Device and Settings shows more now, battery health, temperature, voltage, screen density, free space, in neat labelled rows. The Linux side got a few things in the same build: the Library shows real app icons now (read from the APKs already on your computer, no headset pull), Homes is redone as a Home launcher section with a dropdown to get Lightning Launcher, Setup has a Support Countdown card with the end-of-support dates for Quest 1 and Quest 2, Logs split into App logs and Headset logs, and the Apps tiles are back to the old layout, smaller and more square.
+
+**0.2.25** (2026-11-13): Quest 1 support, because people on Reddit asked for it. The app now tells you which headset is connected (Quest 1 is codename monterey, Quest 2 is hollywood) and shows it by name on the Home and Device and Settings screens. On a Quest 1, Singularity and Quest Home Switcher are hidden: Singularity only supports Quest 2, Pro, 3, and 3S, and Quest Home Switcher only lists Quest 2 / 3 / 3S. Everything else works: Lightning Launcher, WiVRn, apps, files, backups, mirror, and settings, with the refresh rate capped at 72 Hz and the mirror using h264 instead of h265. The Home apps card moved out of the Rooted section so it shows without root. One caveat: no literal Quest 1 getprop dump is published anywhere, so the monterey / Quest strings are inferred from the Quest 2/3 pattern and still need confirming on a real Quest 1.
 
 **0.2.24** (2026-11-12): Licensing and credits are done properly now, and the app says so plainly. CREDITS.md lists every dependency with its licence: all ten Rust crates, the Flutter packages, WiVRn GPLv3 with the exact v26.9 source tag, Frida, scrcpy, and the rest. Cargo.lock is tracked in git now so the exact dependency set is pinned, and the full GPLv3 text ships in the repo under licenses/. The AppImage carries LICENSE, CREDITS.md, and the GPLv3 text inside it, and the About page in the app now says use it at your own risk, I am not responsible for anything that happens.
 

@@ -1,3 +1,7 @@
+// PC VR screen: WiVRn streaming from this computer to the headset.
+// Starts and stops the wivrn-server, picks the encoder, lists the PC
+// games that show in the headset launcher, and edits the WiVRn settings
+// saved on the headset.
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../models.dart';
@@ -29,6 +33,8 @@ class _PcVrScreenState extends State<PcVrScreen> {
   WivrnClientSettings? _edit;
 
   @override
+  /// Loads detection, server status, headset client version, games, and
+  /// headset settings when the screen opens.
   void initState() {
     super.initState();
     _refresh();
@@ -46,6 +52,8 @@ class _PcVrScreenState extends State<PcVrScreen> {
     await _refresh();
   }
 
+  /// Reloads WiVRn detection, server status, the headset client version,
+  /// the game list, and the headset settings.
   Future<void> _refresh() async {
     final d = await widget.state.backend.wivrnDetect();
     final s = await widget.state.backend.wivrnStatus();
@@ -75,6 +83,8 @@ class _PcVrScreenState extends State<PcVrScreen> {
     }
   }
 
+  /// Runs a server action (start, stop, add, remove, save) with the busy
+  /// spinner on, then refreshes.
   Future<void> _act(Future<void> Function() fn) async {
     setState(() => _busy = true);
     try {
@@ -137,6 +147,8 @@ class _PcVrScreenState extends State<PcVrScreen> {
     });
   }
 
+  /// Removes a game from the WiVRn launcher on the headset, after
+  /// confirming. The game itself stays on the computer.
   Future<void> _removeApp(WivrnApp app) async {
     final yes = await showDialog<bool>(
       context: context,
@@ -156,6 +168,8 @@ class _PcVrScreenState extends State<PcVrScreen> {
     });
   }
 
+  /// Saves the edited headset WiVRn settings to client.json on the
+  /// headset. Takes effect next time WiVRn opens there.
   Future<void> _saveClientSettings() async {
     final dev = widget.state.selectedDevice;
     final e = _edit;
@@ -169,6 +183,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
     });
   }
 
+  /// One labelled dropdown row in the headset settings.
   Widget _dropRow<T>(String label, T value, List<DropdownMenuItem<T>> items, ValueChanged<T?> onChanged) {
     return Row(children: [
       SizedBox(width: 140, child: Text(label, style: const TextStyle(fontSize: 13))),
@@ -176,6 +191,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
     ]);
   }
 
+  /// One labelled switch row in the headset settings.
   Widget _switchRow(String label, String sub, bool value, ValueChanged<bool> onChanged) {
     return SwitchListTile(
       title: Text(label, style: const TextStyle(fontSize: 13)),
@@ -284,6 +300,8 @@ class _PcVrScreenState extends State<PcVrScreen> {
   }
 
   @override
+  /// Builds the PC VR page: server status chips, encoder, headset,
+  /// games, settings, log, and first test.
   Widget build(BuildContext context) {
     final d = _detect;
     final s = _status;
@@ -330,6 +348,7 @@ class _PcVrScreenState extends State<PcVrScreen> {
             Chip(label: Text(running ? 'Server running' : 'Server stopped')),
             Chip(label: Text(d['avahi_active'] == true ? 'Avahi on' : 'Avahi off')),
             Chip(label: Text(d['pipewire'] == true ? 'PipeWire on' : 'PipeWire off')),
+            // 9757 is WiVRn's default server port.
             if (s?['port_listening'] == true) const Chip(label: Text('Port 9757 open')),
             if (s?['active_runtime_is_wivrn'] == true) const Chip(label: Text('Headset connected (runtime is WiVRn)')),
             if (s?['pipewire_nodes'] == true) const Chip(label: Text('WiVRn audio on')),

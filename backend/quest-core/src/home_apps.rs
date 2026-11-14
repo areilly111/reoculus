@@ -52,6 +52,8 @@ pub const HOME_APPS: &[HomeApp] = &[
     },
 ];
 
+/// Look up one of the two home apps by id (`lightning` or `qhs`).
+/// Errors on any other id, with the valid ids named in the message.
 pub fn find_app(id: &str) -> Result<&'static HomeApp> {
     HOME_APPS
         .iter()
@@ -279,6 +281,8 @@ pub fn install(t: &dyn AdbTransport, serial: &str, id: &str) -> Result<String> {
     Ok(format!("installed {} {}", app.name, app.package))
 }
 
+/// Uninstall one home app (Lightning Launcher or Quest Home Switcher)
+/// from the headset by its id. The stock Meta home is never touched.
 pub fn uninstall(t: &dyn AdbTransport, serial: &str, id: &str) -> Result<String> {
     let app = find_app(id)?;
     apps::uninstall(t, serial, app.package, false)?;

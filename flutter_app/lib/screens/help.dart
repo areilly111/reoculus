@@ -1,3 +1,5 @@
+// Help screen: offline guides for keeping a Quest 2 (and Quest 1)
+// going after Meta ends support. No web fetch, no Meta account needed.
 import 'package:flutter/material.dart';
 import '../services/app_state.dart';
 import '../widgets/common.dart';
@@ -8,11 +10,13 @@ import '../widgets/common.dart';
 // keep Quest 2 support alive after Meta ends it (feature updates end
 // March 2027, security patches end December 2027).
 
+/// Help screen: offline guides for the Quest 2, shown as cards.
 class HelpScreen extends StatelessWidget {
   final AppState state;
   const HelpScreen({required this.state, super.key});
 
   @override
+  /// Builds the help page: the end-of-support card and the guide cards.
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -73,10 +77,12 @@ class HelpScreen extends StatelessWidget {
   }
 }
 
+/// One help guide: a title and a body of plain advice.
 class _Guide extends StatelessWidget {
   final String title, body;
   const _Guide({required this.title, required this.body});
   @override
+  /// Builds one guide card.
   Widget build(BuildContext context) => Card(
         child: Padding(
           padding: const EdgeInsets.all(16),

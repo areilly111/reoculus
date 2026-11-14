@@ -66,6 +66,9 @@ fn config_path() -> Result<PathBuf> {
         .join("mirror.json"))
 }
 
+/// Read the saved mirror settings from the config file on this computer.
+/// Missing file, unreadable file, or bad JSON all fall back to the
+/// defaults instead of erroring, so a first run just works.
 pub fn read_config() -> MirrorSettingsConfig {
     let Ok(path) = config_path() else {
         return MirrorSettingsConfig::default();

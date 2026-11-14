@@ -132,6 +132,10 @@ pub fn is_home_component(component: &str) -> bool {
     true
 }
 
+/// List the home (launcher) apps installed on the headset. The stock
+/// Meta home is deliberately left out. An empty list means no
+/// third-party launcher is installed, which is a fine answer, not
+/// an error.
 pub fn list_homes(t: &dyn AdbTransport, serial: &str) -> Result<Vec<HomeEntry>> {
     let target = Target::serial(serial);
     let out = t.shell(
@@ -180,6 +184,9 @@ pub fn list_homes(t: &dyn AdbTransport, serial: &str) -> Result<Vec<HomeEntry>> 
     Ok(homes)
 }
 
+/// Which home is active right now, as a `package/Activity` component,
+/// or None when the headset will not say (the resolve command failed).
+/// Note the firmware usually refuses to change this; see `set_home`.
 pub fn current_home(t: &dyn AdbTransport, serial: &str) -> Result<Option<String>> {
     let target = Target::serial(serial);
     let out = t.shell(

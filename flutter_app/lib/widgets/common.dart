@@ -8,11 +8,13 @@ import '../services/app_state.dart';
 // path picker (no external plugin: plain path field, works on Linux and
 // Android file paths), snackbars. Plain language, no em dashes.
 
+/// A section heading, with an optional smaller subtitle underneath.
 class SectionTitle extends StatelessWidget {
   final String title;
   final String? subtitle;
   const SectionTitle(this.title, {this.subtitle, super.key});
   @override
+  /// Title in large text, subtitle below it in small text when given.
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 8, top: 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -33,6 +35,7 @@ class InfoButton extends StatelessWidget {
   final String body;
   const InfoButton(this.title, this.body, {super.key});
   @override
+  /// A small "i" button that opens the note dialog.
   Widget build(BuildContext context) => IconButton(
         icon: const Icon(Icons.info_outline, size: 20),
         tooltip: title,
@@ -60,6 +63,7 @@ class SectionTitleWithInfo extends StatelessWidget {
   final String infoBody;
   const SectionTitleWithInfo(this.title, {this.subtitle, required this.infoTitle, required this.infoBody, super.key});
   @override
+  /// Title and info button on one row, subtitle below when given.
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 8, top: 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -83,6 +87,7 @@ class CardGrid extends StatelessWidget {
   final double spacing;
   const CardGrid({required this.cards, this.spacing = 12, super.key});
   @override
+  /// One column on narrow screens, two flowing columns on wide ones.
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, constraints) {
           // One card on its own takes the full width; two or more
@@ -108,6 +113,7 @@ class CardGrid extends StatelessWidget {
           for (var i = 0; i < cards.length; i++) {
             (i.isEven ? left : right).add(cards[i]);
           }
+          // One flowing column of cards with spacing between them.
           Widget column(List<Widget> items) => Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -129,6 +135,8 @@ class CardGrid extends StatelessWidget {
       );
 }
 
+/// A centred icon, title and body for an empty list, with an optional
+/// action button.
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -137,6 +145,7 @@ class EmptyState extends StatelessWidget {
   final VoidCallback? onAction;
   const EmptyState({required this.icon, required this.title, required this.body, this.actionLabel, this.onAction, super.key});
   @override
+  /// Icon, title, body, and the action button when one was given.
   Widget build(BuildContext context) => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -155,6 +164,8 @@ class EmptyState extends StatelessWidget {
       );
 }
 
+/// Yes/no dialog. Returns true only when the user taps the confirm
+/// button; false on Cancel or dismiss.
 Future<bool> confirmDialog(BuildContext context, {required String title, required String body, String confirmLabel = 'Yes, do it', bool destructive = false}) async {
   final result = await showDialog<bool>(
     context: context,
@@ -174,6 +185,8 @@ Future<bool> confirmDialog(BuildContext context, {required String title, require
   return result == true;
 }
 
+/// Ask for a file path: type it or tap Browse to pick. Returns the
+/// trimmed path, or null when cancelled.
 Future<String?> pathDialog(BuildContext context, {required String title, required String hint, String initial = '', List<String>? extensions}) async {
   final ctrl = TextEditingController(text: initial);
   final result = await showDialog<String>(
@@ -213,6 +226,8 @@ Future<String?> pathDialog(BuildContext context, {required String title, require
   return result;
 }
 
+/// Short snackbar: green when ok, red when not. An empty message
+/// becomes "Done." or "Something went wrong."
 void showResult(BuildContext context, bool ok, String message) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     content: Text(message.isEmpty ? (ok ? 'Done.' : 'Something went wrong.') : message),
@@ -220,6 +235,7 @@ void showResult(BuildContext context, bool ok, String message) {
   ));
 }
 
+/// Human size: 512 B, 1.5 KB, 2.0 MB, 1.25 GB.
 String formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';
   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -227,6 +243,8 @@ String formatBytes(int bytes) {
   return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
 }
 
+/// Coloured circle with the first letter of the label. The colour
+/// comes from the label length, so one app always gets the same colour.
 Widget avatarFor(String label, {double size = 40}) {
   final letter = label.isNotEmpty ? label[0].toUpperCase() : '?';
   final colors = [Colors.blue, Colors.teal, Colors.orange, Colors.purple, Colors.green, Colors.indigo];
@@ -251,11 +269,14 @@ class AppIconTile extends StatefulWidget {
 
 class _AppIconTileState extends State<AppIconTile> {
   @override
+  /// Start loading the icon as soon as the tile appears.
   void initState() {
     super.initState();
     _load();
   }
 
+  /// Ask AppState for the icon, unless it is already cached; report it
+  /// through onIcon when it arrives.
   Future<void> _load() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -265,6 +286,8 @@ class _AppIconTileState extends State<AppIconTile> {
   }
 
   @override
+  /// The real icon when loaded, the initials avatar while loading or
+  /// when there is none.
   Widget build(BuildContext context) {
     final icon = widget.state.iconCache[widget.app.package];
     final path = icon?.iconPath ?? widget.app.iconPath;
@@ -278,6 +301,61 @@ class _AppIconTileState extends State<AppIconTile> {
         height: widget.size,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => avatarFor(widget.app.label, size: widget.size),
+      ),
+    );
+  }
+}
+
+/// A library entry's real launcher icon, from the APK already on
+/// this computer (backend `library icon`). Loaded lazily through
+/// AppState's in-memory cache (the backend caches the file on
+/// disk, so repeat loads are cheap). Save backups have no APK, so
+/// they keep the save icon, never a fake one. While the icon loads,
+/// or when the APK has no launcher icon at all, it shows the
+/// initials avatar, never a blank tile.
+class LibraryIconTile extends StatefulWidget {
+  final AppState state;
+  final LibraryEntry entry;
+  final double size;
+  const LibraryIconTile({required this.state, required this.entry, this.size = 40, super.key});
+  @override
+  State<LibraryIconTile> createState() => _LibraryIconTileState();
+}
+
+class _LibraryIconTileState extends State<LibraryIconTile> {
+  @override
+  /// Start loading the icon as soon as the tile appears.
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// Save backups have no APK, so there is nothing to load; otherwise
+  /// ask AppState for the icon.
+  Future<void> _load() async {
+    if (widget.entry.kind == 'save') return;
+    if (widget.state.libraryIconCache.containsKey(widget.entry.path)) return;
+    await widget.state.libraryIcon(widget.entry);
+  }
+
+  @override
+  /// Save entries show a save icon; the rest show the real icon or
+  /// the initials avatar.
+  Widget build(BuildContext context) {
+    if (widget.entry.kind == 'save') {
+      return Icon(Icons.save, size: widget.size);
+    }
+    final icon = widget.state.libraryIconCache[widget.entry.path];
+    final path = icon?.iconPath;
+    if (path == null) return avatarFor(widget.entry.label, size: widget.size);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.size / 5),
+      child: Image.file(
+        File(path),
+        width: widget.size,
+        height: widget.size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => avatarFor(widget.entry.label, size: widget.size),
       ),
     );
   }

@@ -78,6 +78,9 @@ fn history_path(serial: &str) -> Result<PathBuf> {
     Ok(data_dir()?.join(format!("battery-history-{}.json", sanitize(serial))))
 }
 
+/// Load the saved battery samples from a JSON file on this computer.
+/// Returns an empty list (not an error) when the file is missing or
+/// unreadable, so a fresh install just starts with no history.
 pub fn load_samples(path: &PathBuf) -> Vec<BatterySample> {
     std::fs::read_to_string(path)
         .ok()
@@ -307,6 +310,11 @@ pub fn parse_usagestats(text: &str, offset_seconds: i64, now_epoch: i64) -> Vec<
     out
 }
 
+/// Battery history for the Headset Health section: the live level from
+/// `dumpsys battery`, the samples recorded on this computer over time,
+/// and the most-used apps from the headset's last-24-hours usage stats.
+/// A headset that was never connected has no samples yet, so early
+/// history is sparse.
 pub fn battery_history(t: &dyn AdbTransport, serial: &str) -> Result<BatteryHistory> {
     let target = Target::serial(serial);
     let battery = t

@@ -73,7 +73,7 @@ flutter run -d linux
 
 ### The Android APK (phone-as-host companion, Wi-Fi first)
 
-Version 0.2.0 ships as `QuestCompanion-Android-0.2.0.apk`
+Version 0.2.26 ships as `ReOculus-Android-0.2.26.apk`
 (debug-signed, fine for sideload; no persistent release keystore
 was created). On your phone:
 
@@ -81,43 +81,43 @@ was created). On your phone:
 2. Tap it to install. Android will ask you to allow installs from
    unknown sources for the app you open it with (Files, Chrome,
    etc.): allow it just for that install.
-3. Open ReOculus. It shows a plain message that the Android
-   Wi-Fi transport is being built; the offline parts (Help, Setup)
-   work now. When the transport lands, pair over Wi-Fi from Devices
-   ("Connect a headset", "Connect with Wi-Fi"): the headset and the
-   phone must be on the same Wi-Fi, and you enter the headset IP,
-   port and 6-digit pairing code from the headset's Wireless
-   debugging screen.
+3. Open ReOculus. On Home, under Headsets, tap "Connect a headset",
+   then "Connect with Wi-Fi": the headset and the phone must be on the same Wi-Fi, and
+   you enter the headset IP and port. If the headset already listens
+   on the classic wireless debugging port (5555), leave the pairing
+   code empty. The first connect shows an "Allow USB debugging?"
+   prompt inside the headset for the phone's new key: tap Allow.
+   The app remembers the headset address on the phone, so the next
+   launch connects straight away.
 4. Do NOT install the APK on the Quest itself: the companion is a
    phone app, and installing test builds on the headset needs
    the owner's say-so each time.
 
-**What works on Android in 0.2.0 vs desktop-only:** the full UI is
-there (bottom navigation, all 9 screens, same Dark VR Neon blue
-theme), and the offline Help and Setup screens work. Everything
-that needs the headset (Devices, Apps, Files, Mirror, Logs,
-Terminal, backup/restore/library/gallery) shows the honest
-"Android transport not ready" state, because on Linux the UI spawns
-the questctl Rust binary and Android has no binary to spawn. The
-chosen path for the transport is (b): build questctl as an Android
-executable (aarch64-linux-android, Rust targets and NDK already
-installed) bundled in the APK and run it with the libadb direct
-transport over Wi-Fi; the direct transport already does shell /
-exec-out / TLS pairing, and still needs push/pull/install and device
-discovery before installs work on Android. Option (a)
-(flutter_rust_bridge / JNI embedding quest-core) is the longer-term
-alternative; option (c) (a Dart ADB client) is out, TLS/SPAKE2
-pairing in pure Dart is the hard part and the backend's libadb
-DirectTransport spike is the knowledge to reuse. No Android device
-or emulator was available to install-test this APK on; it was
-verified with `aapt dump badging` only (package, version, SDK
-levels, permissions). Live Wi-Fi testing against the real Quest 2
-still needs a phone.
+**What works on Android in 0.2.26 vs desktop-only:** the app bundles
+the questctl Rust binary built for Android aarch64
+(`backend/scripts/build-android.sh`, copied to
+`assets/questctl-android-arm64` before `flutter build apk`) and
+runs it with the libadb DirectTransport over Wi-Fi, so the same
+shell-based headset features work from a phone: Home (Headsets), Apps,
+Files, Device and Settings, Logs, Terminal, backup/restore/library/
+gallery, the headset config file, and custom headset names. PC VR
+and WiVRn are hidden on Android: no phone can host VR streaming
+for a Quest (the research in
+`research_notes/phone-to-quest-vr-streaming-20261113/` found no
+shipping phone-as-host streamer). Mirror needs scrcpy, which does
+not exist on a phone, so it shows an honest error. Features that
+need adb push/pull/install return the backend's clear "not
+implemented on the direct transport" error instead of silently
+failing; discovery (listing attached devices) does not exist on the
+direct transport, so Android connects by saved address only.
+The APK was verified with `aapt dump badging` (package, version,
+SDK levels, permissions). Live Wi-Fi testing against the real
+Quest 2 still needs a phone.
 
 The app starts in **Real mode** and stays there. There is no Demo
 mode any more (removed 2026-11-12): no demo toggle, no demo banner,
 no sample data anywhere. If questctl is missing or no headset is
-connected, Home and Devices show a clear error state ("Backend not
+connected, Home shows a clear error state ("Backend not
 found at <path>" / "No headset connected") with what to do, never
 sample data. Connect a headset from the "Connect a headset" button
 (USB steps + Wi-Fi pairing, with Developer Mode help inside).
@@ -146,8 +146,10 @@ Flutter UI
   questctl bundled next to the Flutter executable (the AppImage
   layout), then the two relative candidates, in that order.
 - The AppImage bundles questctl next to the Flutter binary; the
-  Android build has no questctl binary (see "The Android APK"
-  above) and says so plainly in the app.
+  Android build extracts the bundled aarch64 questctl asset into
+  the app documents dir on first launch and runs it with the
+  libadb direct transport over Wi-Fi (see "The Android APK"
+  above).
 - Contract: every call is checked against
   `../backend/CONTRACT.md` (2026-11-12 integration fix: `deviceInfo`
   reads `battery.level` / `battery.temperature_c` /
@@ -172,7 +174,7 @@ demo banner and all "In Demo mode..." text were removed 2026-11-12.
   <path>" and tells you to build the backend or check the path in
   Setup. It never falls back to sample data.
 
-How to tell it is really connected: the Devices screen shows the real
+How to tell it is really connected: Home shows the real
 serial (`TESTSERIAL000001` for the owner's Quest 2), and Home shows the
 real battery level and storage numbers from `devices info`.
 
@@ -235,9 +237,9 @@ while its APK is pulled; after that it is instant from the cache.
   (`/sdcard/Android/data/<pkg>/` + root data tar, OBB not copied by
   default). Shown separately in the Library (type: App vs Save).
 - **No-connection help + auto-wireless:** "No headset connected" card
-  on Home and Devices with "Connect with USB" / "Connect with Wi-Fi"
+  on Home with "Connect with USB" / "Connect with Wi-Fi"
   (step-by-step dialogs, Developer Mode help inside, Refresh /
-  Check again). "Connect a headset" is always reachable from Devices.
+  Check again). "Connect a headset" is always reachable from Home.
   When a headset first connects over USB, the app runs
   `devices setup-wifi` once (tcpip 5555 + connect, IP saved) and
   shows "Wi-Fi connection ready, you can unplug the USB cable"; on
@@ -276,12 +278,12 @@ while its APK is pulled; after that it is instant from the cache.
   is NOT blocked by this app (no standalone telemetry package was
   found on the Quest 2; Singularity has its own disabler) and the UI
   says so.
-- **Full device backup:** Devices screen, "Back up this headset now"
+- **Full device backup:** Device screen, "Back up this headset now"
   (settings, Guardian data, Wi-Fi configs, app inventory; APKs are
   NOT re-copied, apps come from library backups), list of device
   backups, Restore (dry-run shown first, confirm warning) and Delete
   (local only).
-- **Controllers:** Devices/Home show controller pairing presence
+- **Controllers:** Home shows controller pairing presence
   from `devices controllers`; battery and firmware are NOT readable
   offline and the UI says so, with pair-help steps (Menu + Y / Menu +
   B until the LED blinks, pair in headset Settings > Devices).
@@ -323,7 +325,7 @@ until the live-diff work is done.
    note, controller names, quick actions, recent activity. "No
    headset connected" card with USB / Wi-Fi connect buttons when
    nothing is attached. Never sample data.
-2. Devices: list, refresh, USB vs Wi-Fi, unauthorized guidance in plain
+2. Home (Headsets): list, refresh, USB vs Wi-Fi, unauthorized guidance in plain
    words, "Connect a headset" any time, disconnect Wi-Fi, controllers
    section, Rooted section (root status + update pause), device
    backups (Backup now, list, Restore with dry-run first, Delete).
@@ -357,20 +359,26 @@ until the live-diff work is done.
 ## Android path (phone-as-host companion, Wi-Fi first)
 
 Same Flutter single codebase, same features, on Android as a
-phone-as-host companion, **Wi-Fi ADB only for v1** (no USB OTG host
-in v1 unless it turns out easy; document the choice when built).
+phone-as-host companion, **Wi-Fi ADB only** (no USB OTG host;
+a phone cannot run an adb server over USB to the headset).
 Pair/connect over Wi-Fi (modern TLS pairing with the 6-digit code
 where needed, plus legacy tcpip 5555 where the Quest accepts it).
-Coverage: devices, apps (list/icons/sizes/install/uninstall/launch),
-files, device settings, mirror/screenshot/record where possible on
-Android, logs, backup/restore/library/gallery/terminal/debug, rooted
-mode, no-connection help + auto-wireless (on Android, auto-wireless
-means: once paired, remember the Quest IP and reconnect
-automatically), offline help.
+Coverage: devices, apps (list/icons/sizes; install/uninstall are
+blocked by the direct transport, which has no push/pull yet),
+files (read-only listing where the transport allows), device
+settings, logs, backup/restore/library/gallery/terminal/debug,
+rooted mode, no-connection help + auto-wireless (on Android,
+auto-wireless means: once paired, remember the Quest IP and
+reconnect automatically), offline help. PC VR and WiVRn are hidden
+on Android (no phone can host VR streaming for a Quest); mirror
+needs scrcpy, which does not exist on a phone.
 
-**What is ready:** the UI is already responsive: `lib/main.dart`
-uses a bottom navigation bar on narrow screens (< 700 px) and the
-desktop NavigationRail on wide screens, same screens, same features.
+**What is ready:** the Android transport is built (0.2.26): the
+bundled aarch64 questctl asset is extracted on first launch and run
+with the libadb direct transport. The UI is already responsive:
+`lib/main.dart` uses a bottom navigation bar on narrow screens
+(< 700 px) and the desktop NavigationRail on wide screens, same
+screens, same features.
 No desktop-only dependency is in the Dart code except `Process.run`
 calls in `RealBackend` (questctl spawn), `xdg-open` (gallery open,
 Linux only, falls back to showing the path on Android), and the

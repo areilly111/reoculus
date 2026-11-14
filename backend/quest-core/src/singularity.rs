@@ -62,6 +62,9 @@ pub struct DownloadReport {
     pub verification: String,
 }
 
+/// The download cache on this computer:
+/// `~/.cache/quest-companion/singularity`. Created when missing.
+/// Errors when HOME is not set.
 pub(crate) fn cache_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME")
         .map(PathBuf::from)
@@ -74,6 +77,10 @@ pub(crate) fn cache_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Check whether this headset is ready for the Singularity root wizard:
+/// Quest 2 only, battery 50% or more, root status, and the rest. Returns
+/// one check per requirement, so the UI can show exactly what is missing
+/// instead of a single pass or fail.
 pub fn preflight(t: &dyn AdbTransport, serial: &str) -> Result<Preflight> {
     let info = device_info(t, serial)?;
     let root = root_status(t, serial);
@@ -186,6 +193,9 @@ pub fn pick_release_assets(text: &str) -> Result<(String, String, Option<String>
     Ok((version, format!("{apk_name}|{apk_url}"), checksum))
 }
 
+/// Download a URL to a file with the `curl` binary (`-fsSL`, user agent
+/// ReOculus). Errors when curl is missing or the download fails, with
+/// curl's own error text.
 pub(crate) fn curl(url: &str, out: &PathBuf) -> Result<()> {
     let st = std::process::Command::new("curl")
         .args(["-fsSL", "-A", "ReOculus", url, "-o"])
@@ -215,6 +225,8 @@ fn curl_text(url: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// SHA-256 of one file, as a lowercase hex string. Used to verify
+/// downloads against the checksum the release publishes.
 pub(crate) fn sha256_file(path: &PathBuf) -> Result<String> {
     use sha2::Digest;
     let mut f = std::fs::File::open(path)?;
@@ -223,6 +235,10 @@ pub(crate) fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(format!("{:x}", h.finalize()))
 }
 
+/// Download the latest Singularity APK from GitHub releases into the
+/// cache, verify its size (a tiny file means GitHub rate-limited the
+/// request) and its SHA-256, and read its package and label. Returns a
+/// report of what was downloaded.
 pub fn download_latest() -> Result<DownloadReport> {
     let release = curl_text(SINGULARITY_LATEST_API)?;
     let (version, apk_pair, checksum_url) = pick_release_assets(&release)?;
@@ -287,6 +303,11 @@ pub fn cached_apk() -> Option<PathBuf> {
     apks.into_iter().next_back()
 }
 
+/// Install the already-downloaded Singularity APK on the headset.
+/// Refuses Quest 1 outright (Singularity supports Quest 2, Pro, 3, and
+/// 3S only), even though the wizard preflight already refuses it. The
+/// headset still needs the user to open Singularity and press Root Now
+/// afterwards; installing alone does not root anything.
 pub fn install(t: &dyn AdbTransport, serial: &str) -> Result<String> {
     // Singularity only supports Quest 2, Pro, 3, and 3S (its own
     // README). The wizard's preflight already refuses other models,

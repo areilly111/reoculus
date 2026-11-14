@@ -33,6 +33,9 @@ fn config_path() -> Result<PathBuf> {
         .join("paths.json"))
 }
 
+/// Read the saved backup and recordings folders from the config file on
+/// this computer. Missing file, unreadable file, or bad JSON all fall
+/// back to the defaults instead of erroring.
 pub fn read_config() -> PathsConfig {
     let Ok(path) = config_path() else {
         return PathsConfig::default();
@@ -70,6 +73,8 @@ pub fn default_backup_root() -> Result<PathBuf> {
         .join("backups"))
 }
 
+/// The default recordings folder: `~/quest-recordings`. Errors when
+/// HOME is not set.
 pub fn default_recordings_root() -> Result<PathBuf> {
     let home = std::env::var("HOME")
         .map_err(|_| Error("HOME is not set; cannot locate gallery dir".into()))?;
@@ -93,6 +98,9 @@ pub fn backup_root() -> Result<PathBuf> {
     default_backup_root()
 }
 
+/// The recordings folder in effect: the `QUEST_COMPANION_RECORDINGS_ROOT`
+/// environment variable wins, then the saved choice, then the default.
+/// Same shape as `backup_root`.
 pub fn recordings_root() -> Result<PathBuf> {
     if let Ok(x) = std::env::var("QUEST_COMPANION_RECORDINGS_ROOT") {
         if !x.is_empty() {
@@ -116,6 +124,9 @@ pub struct PathsInfo {
     pub config_file: String,
 }
 
+/// Both storage folders in effect, plus whether each one is still the
+/// default and which config file they came from. What the UI shows on
+/// the Paths screen.
 pub fn get_paths() -> Result<PathsInfo> {
     let backup = backup_root()?;
     let rec = recordings_root()?;
@@ -164,6 +175,8 @@ pub fn set_paths(
     get_paths()
 }
 
+/// Forget the saved backup and recordings folders (deletes the config
+/// file) and return the defaults that now apply.
 pub fn reset_paths() -> Result<PathsInfo> {
     if let Ok(path) = config_path() {
         let _ = std::fs::remove_file(path);

@@ -17,7 +17,7 @@
 //! deliberately deferred until a proper database exists (see
 //! README.md / CONTRACT.md).
 
-use crate::apps::{badging_of, unpack_bundle};
+use crate::apps::{badging_of, local_apk_icon, unpack_bundle, AppIcon};
 use crate::backup::{
     backup_root, delete_backup, format_unix_time, now_unix, read_manifest, read_save_manifest,
 };
@@ -273,6 +273,98 @@ fn identify_apk(path: &Path, ext: &str) -> Result<(String, String, String, Optio
     Ok((stem.clone(), "unknown".to_string(), stem, None))
 }
 
+/// Get the launcher icon for one library entry, from the APK
+/// already on this computer. No headset, no ADB pull.
+///
+/// * kind `app` (app backup): the base.apk in the backup folder,
+///   named by manifest.json, base.apk first.
+/// * kind `apk` (imported file): the APK itself, or the base.apk
+///   inside an .apks / .xapk bundle (unpacked to a temp dir).
+/// * kind `save` (save backup): no APK in the folder, so there is
+///   no icon to get. This is an error, not a fake icon: the UI
+///   keeps the save icon for save backups.
+///
+/// The icon is cached by [`local_apk_icon`] under
+/// ~/.cache/quest-companion/icons/<package>/<version>/, so a
+/// repeat call is a cache hit and never re-reads the APK.
+pub fn library_icon(path: &Path, package: &str, version: &str, kind: &str) -> Result<AppIcon> {
+    if kind == "save" {
+        return Err(Error(
+            "save backups have no APK, so there is no launcher icon to show".into(),
+        ));
+    }
+    // Resolve the APK file, keeping any bundle temp dir alive
+    // until the icon has been extracted from it.
+    let mut _bundle_dir: Option<tempfile::TempDir> = None;
+    let apk_path: PathBuf = if path.is_file() {
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if ext == "apk" {
+            path.to_path_buf()
+        } else {
+            let (dir, apks) = unpack_bundle(path)?;
+            let base = apks
+                .iter()
+                .find(|p| {
+                    p.file_name()
+                        .map(|n| n.eq_ignore_ascii_case("base.apk"))
+                        .unwrap_or(false)
+                })
+                .or_else(|| apks.first())
+                .ok_or_else(|| Error(format!("no APKs found inside {}", path.display())))?
+                .clone();
+            _bundle_dir = Some(dir);
+            base
+        }
+    } else if path.is_dir() {
+        // Backup folder: the manifest names the APKs, base.apk first.
+        let mut candidate: Option<PathBuf> = None;
+        if let Ok(m) = read_manifest(path) {
+            if let Some(first) = m.apks.first() {
+                let p = path.join(&first.name);
+                if p.is_file() {
+                    candidate = Some(p);
+                }
+            }
+        }
+        if candidate.is_none() {
+            let base = path.join("base.apk");
+            if base.is_file() {
+                candidate = Some(base);
+            }
+        }
+        if candidate.is_none() {
+            // Last resort: any .apk in the folder, name order.
+            let mut apks: Vec<PathBuf> = std::fs::read_dir(path)
+                .map(|rd| {
+                    rd.flatten()
+                        .map(|e| e.path())
+                        .filter(|p| {
+                            p.is_file()
+                                && p.extension()
+                                    .map(|e| e.eq_ignore_ascii_case("apk"))
+                                    .unwrap_or(false)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            apks.sort();
+            candidate = apks.into_iter().next();
+        }
+        candidate.ok_or_else(|| {
+            Error(format!(
+                "no APK found in backup folder {}",
+                path.display()
+            ))
+        })?
+    } else {
+        return Err(Error(format!("library entry not found: {}", path.display())));
+    };
+    local_apk_icon(&apk_path, package, version)
+}
+
 /// Delete a library entry. Backup folders go through the backup
 /// delete (manifest check included); imported files are removed
 /// from disk and the index. Local files only, never the headset.
@@ -342,5 +434,32 @@ mod tests {
         let m = read_manifest(&folder).unwrap();
         assert_eq!(m.package, "com.example.game");
         assert_eq!(m.apks.len(), 1);
+    }
+
+    #[test]
+    fn library_icon_rejects_save_backups() {
+        // Save backups have no APK in the folder, so there is no
+        // icon to extract. This must be a clean error, not a
+        // fake icon and not a crash.
+        let err = library_icon(
+            Path::new("/tmp/no-such-backup"),
+            "com.example.game",
+            "1.0",
+            "save",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no APK"));
+    }
+
+    #[test]
+    fn library_icon_rejects_missing_entry() {
+        let err = library_icon(
+            Path::new("/tmp/no-such-backup"),
+            "com.example.game",
+            "1.0",
+            "app",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not found"));
     }
 }
