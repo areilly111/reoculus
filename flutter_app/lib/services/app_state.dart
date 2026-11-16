@@ -181,10 +181,11 @@ class AppState extends ChangeNotifier {
   /// Find questctl (custom path from Setup) and
   /// use it. When it cannot be found, backendError is set and the UI
   /// shows an error state; nothing falls back to sample data.
-  /// On Android the arm64 questctl bundled in the app is extracted
-  /// to the app's files dir and used over Wi-Fi (direct transport);
-  /// there is no adb server on a phone, so USB discovery does not
-  /// exist there and the headset is found by its saved Wi-Fi address.
+  /// On Android the arm64 questctl bundled in the app runs from the
+  /// native library dir (libquestctl.so) and is used over Wi-Fi
+  /// (direct transport); there is no adb server on a phone, so USB
+  /// discovery does not exist there and the headset is found by its
+  /// saved Wi-Fi address.
   Future<void> initBackend({String? path}) async {
     if (Platform.isAndroid) {
       final extracted = await RealBackend.extractAndroidCli();

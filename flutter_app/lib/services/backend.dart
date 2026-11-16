@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:path_provider/path_provider.dart';
 import '../models.dart';
 
@@ -442,6 +442,25 @@ class RealBackend implements BackendService {
   static Future<(String, String)?> extractAndroidCli() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
+      // Preferred path: questctl ships as a native library
+      // (libquestctl.so in the APK's lib/arm64-v8a, installed to the
+      // app's native library dir). Android 10 and later refuse to run
+      // a binary out of the app's writable files dir, which is why
+      // 0.2.32 failed on first connect with "Permission denied" even
+      // though the extracted file had its execute bit set. The native
+      // library dir is made to be run from, so use it when it is there.
+      try {
+        const channel = MethodChannel('reoculus/native');
+        final libDir =
+            await channel.invokeMethod<String>('nativeLibraryDir');
+        if (libDir != null && libDir.isNotEmpty) {
+          final native = File('$libDir/libquestctl.so');
+          if (await native.exists()) return (native.path, dir.path);
+        }
+      } catch (_) {
+        // No channel, or no native library on this device: fall
+        // through to the extracted copy below.
+      }
       final bytes = await rootBundle.load('assets/questctl-android-arm64');
       final file = File('${dir.path}/questctl');
       var rewrite = true;
