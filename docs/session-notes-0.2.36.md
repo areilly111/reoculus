@@ -257,13 +257,33 @@ so the problem is how the app sets up and feeds the decoder.
   the history as is. Awaiting Anthony.
 - His verdicts still open: 0.2.29 SteamVR gate, 0.2.30 Files
   drag-drop, 0.2.31 games edit, 0.2.32 Setup checklist, S23 Ultra APK
-  install, WiVRn Wi-Fi in-headset + settings-bitrate tests, FigCraft v2
+  install, WiVRn Wi-Fi in-headset + settings-bitrate tests, FigCraft v3
   export open test, Quest 1 detection (needs a Reddit Quest 1 tester).
 - USB connection support for Android: researched, verdict delivered in
   outline, NOT started, needs his go.
 - PARKED, do not reopen without his word: ReOculus Home launcher, Beat
   Saber mods, real store + sideloaded-app update check, runtime from
   scratch / WiVRn fork. No RiftLinux in ReOculus at all (his ruling).
+
+## FigCraft export v3 (2026-11-16, ReOculus 0.2.36)
+
+- Generator: `scripts/figcraft_export.py` (uncommitted by design). Run
+  `python3 scripts/figcraft_export.py [--outdir <dir>]`. It validates
+  linkage and must report "problems: none".
+- v3 updates the Mirror frame for 0.2.36: scrcpy is gone (Quality card,
+  USB/Wi-Fi quality chips, auto-restart switch removed), the live view
+  card has the View switch (Both eyes / Flat (one eye)) and Start live
+  view, and the Record card says recordings keep going with 3-minute
+  pieces joined into one video. Verified: 11 frames, 914 nodes,
+  184 instances, 14 components, 21 styles, 0 problems; combined file
+  524,401 bytes, SHA-256
+  `5c726929c09cc28f70fdf5232204906458dc54ccb17985086a7bc14aed8e0de3`.
+  No scrcpy anywhere in the export.
+- Canonical home is the main PC folder:
+  `/mnt/64D649ADD6498072/Programming/quest/figcraft/` (12 JSON files +
+  README.md, with the generator and regen steps). Also in
+  `~/workspace/your_files/` and the goal files dir (combined file +
+  README). The export files are deliverables, not committed to git.
 
 ## Waking the Quest from sleep (verified 2026-11-16, main chat)
 
