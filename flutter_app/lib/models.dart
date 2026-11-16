@@ -496,7 +496,6 @@ class WifiSetupResult {
 /// backend path, root state, device info.
 class DebugInfo {
   final String questctlVersion, adbVersion, backendPath;
-  final bool scrcpyAvailable;
   final String? wifiIp;
   final RootStatus root;
   final DeviceInfo? device;
@@ -504,7 +503,6 @@ class DebugInfo {
     required this.questctlVersion,
     required this.adbVersion,
     required this.backendPath,
-    required this.scrcpyAvailable,
     this.wifiIp,
     required this.root,
     this.device,
@@ -942,19 +940,12 @@ class PathsInfo {
       );
 }
 
-/// Saved mirror quality for USB and Wi-Fi, whether the mirror
-/// auto-restarts, and which mirror to use: scrcpy in its own
-/// window, or the built-in H.264 stream inside the app.
+/// Saved mirror view: both eyes side by side, or one eye flat.
 class MirrorSettings {
-  final String usbQuality, wifiQuality;
-  final bool autoRestart;
-  final String method;
-  const MirrorSettings({required this.usbQuality, required this.wifiQuality, this.autoRestart = true, this.method = 'scrcpy'});
+  final String view;
+  const MirrorSettings({this.view = 'stereo'});
   factory MirrorSettings.fromJson(Map<String, dynamic> j) => MirrorSettings(
-        usbQuality: (j['usb_quality'] ?? 'balanced').toString(),
-        wifiQuality: (j['wifi_quality'] ?? 'performance').toString(),
-        autoRestart: j['auto_restart'] != false,
-        method: (j['method'] ?? 'scrcpy').toString(),
+        view: (j['view'] ?? 'stereo').toString(),
       );
 }
 

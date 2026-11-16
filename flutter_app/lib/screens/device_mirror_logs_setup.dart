@@ -1,8 +1,7 @@
 // Device, Mirror, Logs, and Setup screens.
 // Device and Settings: safe, dangerous, and rooted headset settings,
 // backups, snapshots, home launchers, and headset health. Mirror: the
-// scrcpy screen mirror on Linux, the H.264 live view on Android, with
-// quality and recording. Logs: app logs,
+// H.264 live view, with a view switch and long recordings. Logs: app logs,
 // headset logcat, terminal, and debug info. Setup: first-run checklist,
 // storage locations, and the Support Countdown.
 import 'dart:io';
@@ -11,7 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
 import '../services/app_state.dart';
+import '../services/backend.dart';
 import '../services/h264_mirror.dart';
+import '../services/recording.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'singularity_wizard.dart';
@@ -1240,9 +1241,9 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
 }
 
 // ---- Mirror / Streaming ---------------------------------------------------
-/// Mirror screen: live headset screen (scrcpy or the built-in
-/// H.264 live view on Linux, H.264 live view only on Android),
-/// quality presets, recording, and screenshots.
+/// Mirror screen: the live headset screen as H.264, decoded on
+/// this device, with a view switch (both eyes or flat one eye),
+/// recording, and screenshots.
 class MirrorScreen extends StatefulWidget {
   final AppState state;
   const MirrorScreen({required this.state, super.key});
@@ -1251,154 +1252,60 @@ class MirrorScreen extends StatefulWidget {
 }
 
 class _MirrorScreenState extends State<MirrorScreen> {
-  bool _mirroring = false;
   bool _recording = false;
+  bool _finishing = false;
   String? _lastSaved;
-  MirrorSettings _quality = const MirrorSettings(usbQuality: 'balanced', wifiQuality: 'performance');
+  String _view = 'stereo';
   // Live view: the headset display streamed as H.264 and
-  // decoded on this device. On Android this is the only mirror;
-  // on Linux it is the built-in alternative to scrcpy.
+  // decoded on this device.
   final _stream = H264Mirror();
   bool _streaming = false;
   int? _streamTextureId;
   String? _streamError;
+  // Long recording: the loop process and where its pieces live.
+  final _recorder = RecordingSession();
+  String? _recordDir;
+  String? _recordOut;
 
   @override
   void dispose() {
     _stream.stop();
+    _recorder.stop();
     super.dispose();
   }
 
   @override
-  /// Loads the saved mirror quality when the screen opens.
+  /// Loads the saved mirror view when the screen opens.
   void initState() {
     super.initState();
-    _loadQuality();
+    _loadView();
   }
 
-  /// Loads the saved USB and Wi-Fi quality presets from the backend.
-  Future<void> _loadQuality() async {
+  /// Loads the saved view (both eyes or flat one eye).
+  Future<void> _loadView() async {
     final q = await widget.state.backend.mirrorSettings();
-    if (q != null && mounted) setState(() => _quality = q);
+    if (q != null && mounted) setState(() => _view = q.view);
   }
 
-  /// Saves a changed quality preset or mirror method. Rolls back to
-  /// the old value on screen if the backend refuses it.
-  Future<void> _saveQuality({String? usb, String? wifi, bool? autoRestart, String? method}) async {
-    final before = _quality;
-    setState(() => _quality = MirrorSettings(
-          usbQuality: usb ?? _quality.usbQuality,
-          wifiQuality: wifi ?? _quality.wifiQuality,
-          autoRestart: autoRestart ?? _quality.autoRestart,
-          method: method ?? _quality.method,
-        ));
-    final q = await widget.state.backend.setMirrorSettings(usbQuality: usb, wifiQuality: wifi, autoRestart: autoRestart, method: method);
+  /// Saves a changed view. Rolls back to the old value on screen
+  /// if the backend refuses it.
+  Future<void> _saveView(String view) async {
+    if (view == _view) return;
+    final before = _view;
+    setState(() => _view = view);
+    final q = await widget.state.backend.setMirrorSettings(view: view);
     if (!mounted) return;
     if (q == null) {
-      setState(() => _quality = before);
-      showResult(context, false, 'Could not save the mirror quality. Is the backend still running?');
+      setState(() => _view = before);
+      showResult(context, false, 'Could not save the view. Is the backend still running?');
     } else {
-      setState(() => _quality = q);
+      setState(() => _view = q.view);
     }
-  }
-
-  /// Turn auto-restart on or off. When the mirror is running, the
-  /// watcher starts or stops with it, so the change takes effect
-  /// right away instead of on the next mirror start.
-  Future<void> _setAutoRestart(bool v) async {
-    await _saveQuality(autoRestart: v);
-    final serial = widget.state.selectedDevice?.serial;
-    if (serial == null || !_mirroring) return;
-    final transport = widget.state.selectedDevice?.transport ?? '';
-    final preset = transport == 'wifi' ? _quality.wifiQuality : _quality.usbQuality;
-    if (v) {
-      await widget.state.backend.startMirrorWatch(serial, preset, transport == 'wifi' ? 'wifi' : 'usb');
-    } else {
-      await widget.state.backend.stopMirrorWatch(serial);
-    }
-  }
-
-  /// One quality dropdown row (USB or Wi-Fi): Performance, Balanced, or Quality.
-  Widget _qualityRow(String label, String value, ValueChanged<String> onChanged) => Row(children: [
-        SizedBox(width: 48, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold))),
-        Expanded(
-          child: DropdownButton<String>(
-            value: const ['performance', 'balanced', 'quality'].contains(value) ? value : 'balanced',
-            isExpanded: true,
-            items: const [
-              DropdownMenuItem(value: 'performance', child: Text('Performance (1280, 4M, 30)')),
-              DropdownMenuItem(value: 'balanced', child: Text('Balanced (1920, 8M, 60)')),
-              DropdownMenuItem(value: 'quality', child: Text('Quality (2560, 12M, 90)')),
-            ],
-            onChanged: (v) {
-              if (v != null) onChanged(v);
-            },
-          ),
-        ),
-      ]);
-
-  /// Starts the mirror in its own scrcpy window, using the saved preset
-  /// for the current transport (USB or Wi-Fi). Also starts the
-  /// auto-restart watcher when that is on.
-  Future<void> _mirror() async {
-    final serial = widget.state.selectedDevice?.serial;
-    if (serial == null) return;
-    final scrcpy = await widget.state.backend.scrcpyAvailable;
-    if (!scrcpy) {
-      if (mounted) {
-        showResult(context, false, 'scrcpy is not installed. Install it with: sudo apt install scrcpy, then try again.');
-      }
-      return;
-    }
-    await _stopMirror(silent: true);
-    setState(() => _mirroring = true);
-    // The quality comes from the saved settings: one preset for
-    // USB, one for Wi-Fi. The defaults are the old automatic
-    // picks (USB Balanced, Wi-Fi Performance).
-    final transport = widget.state.selectedDevice?.transport ?? '';
-    final preset = transport == 'wifi' ? _quality.wifiQuality : _quality.usbQuality;
-    final r = await widget.state.backend.startMirror(serial, preset);
-    if (mounted) showResult(context, r.ok, r.message);
-    widget.state.log('Mirror started');
-    // Auto-restart: a watcher on this computer checks which app
-    // is in front about once a second and restarts the mirror
-    // when a game or the menu opens, so it does not smear.
-    // Stopping the mirror stops the watcher too.
-    if (r.ok && _quality.autoRestart) {
-      await widget.state.backend.startMirrorWatch(serial, preset, transport == 'wifi' ? 'wifi' : 'usb');
-    }
-  }
-
-  /// Stops the mirror (and its watcher). Silent when called from inside
-  /// a restart, so the user is not told twice.
-  Future<void> _stopMirror({bool silent = false}) async {
-    final serial = widget.state.selectedDevice?.serial;
-    if (serial == null) return;
-    final r = await widget.state.backend.stopMirror(serial);
-    if (mounted) setState(() => _mirroring = false);
-    if (!silent && mounted) showResult(context, r.ok, r.message);
-    widget.state.log('Mirror stopped');
-  }
-
-  /// Restarts the mirror after a 2 second pause, so the headset finishes
-  /// switching apps before the new stream starts.
-  Future<void> _restartMirror() async {
-    final serial = widget.state.selectedDevice?.serial;
-    if (serial == null) return;
-    await _stopMirror(silent: true);
-    // Give the headset a moment to settle before the new stream
-    // starts. Restarting the instant the menu is still opening
-    // or closing starts the new stream mid-transition and it
-    // smears again, which is why Stop, wait a few seconds, then
-    // Start used to work when Restart did not.
-    await Future.delayed(const Duration(milliseconds: 2000));
-    await _mirror();
   }
 
   /// Start the live view: spawn the backend H.264 stream and
   /// feed it to the on-device video decoder. The picture runs about a
-  /// second behind the headset. On Android this is the only mirror;
-  /// on Linux it is the built-in alternative to scrcpy.
+  /// second behind the headset.
   Future<void> _startLiveView() async {
     final serial = widget.state.selectedDevice?.serial;
     if (serial == null) return;
@@ -1446,30 +1353,73 @@ class _MirrorScreenState extends State<MirrorScreen> {
     }
   }
 
-  /// Switch the Linux mirror method. Stops whatever is running first,
-  /// so the two mirrors never run at once.
-  Future<void> _setMethod(String method) async {
-    if (method == _quality.method) return;
-    if (_mirroring) await _stopMirror(silent: true);
-    if (_streaming) await _stopLiveView();
-    await _saveQuality(method: method);
+  /// The live picture, in the picked view. Both eyes shows the
+  /// whole 1280x720 frame. Flat shows one eye only, at its own
+  /// aspect: the frame is two eyes side by side, so the left eye
+  /// is the left half. The inner 16:9 box is twice as wide as
+  /// the outer 8:9 box and aligned left, so the right eye
+  /// overflows and is clipped away, with no stretching.
+  Widget _viewTexture() {
+    final texture = Texture(textureId: _streamTextureId!);
+    if (_view == 'flat') {
+      return SizedBox(
+        height: 420,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: 8 / 9,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: OverflowBox(
+                alignment: Alignment.centerLeft,
+                maxWidth: double.infinity,
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: texture,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: texture,
+      ),
+    );
   }
 
-  /// The live view card: the headset display in a 16:9 frame,
-  /// decoded on this device. View only, about a second behind.
+  /// The live view card: the headset display in a frame, decoded
+  /// on this device, with the view switch. View only, about a
+  /// second behind.
   Widget _liveViewCard(String? serial) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(children: [
+          Row(children: [
+            const Text('View: ', style: TextStyle(fontWeight: FontWeight.bold)),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'stereo', label: Text('Both eyes')),
+                ButtonSegment(value: 'flat', label: Text('Flat (one eye)')),
+              ],
+              selected: {_view},
+              onSelectionChanged: (v) => _saveView(v.first),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+            _view == 'flat'
+                ? 'Flat shows one eye only, as a normal flat picture.'
+                : 'Both eyes shows the headset display as it is, two views side by side.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 16),
           if (_streamTextureId != null)
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Texture(textureId: _streamTextureId!),
-              ),
-            )
+            _viewTexture()
           else
             Icon(_streaming ? Icons.cast_connected : Icons.cast, size: 64, color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 12),
@@ -1494,107 +1444,86 @@ class _MirrorScreenState extends State<MirrorScreen> {
     );
   }
 
+  /// Start a long recording: the backend records in 3-minute
+  /// pieces until stopped. The pieces land in a temp folder in
+  /// the gallery; stopping stitches them into one video.
+  Future<void> _startRecording() async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final dir = Directory('${galleryDir()}/rec-$stamp');
+    await dir.create(recursive: true);
+    final ok = await _recorder.start(
+      cliPath: widget.state.backend.cliPath,
+      directAddr: widget.state.backend.directAddr,
+      serial: serial,
+      dir: dir.path,
+      home: widget.state.backend.androidHome,
+      onError: (message) async {
+        // The loop died on its own (headset asleep or gone):
+        // stitch what was recorded so far instead of losing it.
+        if (!mounted) return;
+        setState(() => _recording = false);
+        await _finishRecording(prefix: message);
+      },
+    );
+    if (!mounted) return;
+    if (!ok) {
+      showResult(context, false, 'Could not start recording. Is the backend still running?');
+      return;
+    }
+    setState(() {
+      _recording = true;
+      _recordDir = dir.path;
+      _recordOut = '${galleryDir()}/rec-$stamp.mp4';
+    });
+    widget.state.log('Recording started');
+  }
+
+  /// Stop the recording and stitch the pieces into one video.
+  Future<void> _stopRecording() async {
+    await _recorder.stop();
+    if (!mounted) return;
+    setState(() => _recording = false);
+    await _finishRecording();
+  }
+
+  /// Stitch the recorded pieces into one video and delete the
+  /// temp folder. [prefix] is shown first when the recording
+  /// stopped on its own instead of by the Stop button.
+  Future<void> _finishRecording({String? prefix}) async {
+    final serial = widget.state.selectedDevice?.serial;
+    final dir = _recordDir;
+    final out = _recordOut;
+    if (serial == null || dir == null || out == null) return;
+    setState(() => _finishing = true);
+    final r = await widget.state.backend.finishRecording(serial, dir, out);
+    try {
+      await Directory(dir).delete(recursive: true);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _finishing = false);
+    if (r.ok) {
+      setState(() => _lastSaved = (r.data['path'] as String?) ?? r.message);
+      widget.state.log('Recording saved');
+    }
+    showResult(context, r.ok, prefix != null ? '$prefix ${r.message}' : r.message);
+  }
+
   @override
-  /// Builds the mirror page: start/stop, quality, and record/screenshot cards.
+  /// Builds the mirror page: live view and record/screenshot cards.
   Widget build(BuildContext context) {
     final serial = widget.state.selectedDevice?.serial;
-    // Android only has the live view. Linux picks between scrcpy
-    // (default, low latency, its own window) and the built-in
-    // stream (inside this window, about a second behind).
-    final builtin = Platform.isAndroid || _quality.method == 'builtin';
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Mirror the headset screen', style: Theme.of(context).textTheme.headlineSmall),
-        Text(builtin
-            ? 'See what the headset sees, live on this device. About a second behind, view only. No Meta account needed.'
-            : 'See what the headset sees, live on this computer. Uses scrcpy: about 35 to 70 ms delay on USB, a bit more on Wi-Fi. No Meta account needed.'),
-        if (!Platform.isAndroid) ...[
-          const SizedBox(height: 12),
-          Row(children: [
-            const Text('Mirror method: ', style: TextStyle(fontWeight: FontWeight.bold)),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'scrcpy', label: Text('scrcpy')),
-                ButtonSegment(value: 'builtin', label: Text('Built-in stream')),
-              ],
-              selected: {_quality.method == 'builtin' ? 'builtin' : 'scrcpy'},
-              onSelectionChanged: (v) => _setMethod(v.first),
-            ),
-          ]),
-          const SizedBox(height: 4),
-          Text(
-            _quality.method == 'builtin'
-                ? 'The built-in stream shows the headset inside this window and needs nothing installed, but it runs about a second behind and restarts every 3 minutes.'
-                : 'scrcpy opens in its own window and is the smoothest, about 35 to 70 ms behind, but it has to be installed first.',
-            style: const TextStyle(fontSize: 13),
-          ),
-        ],
+        const Text('See what the headset sees, live on this device. About a second behind, view only. No Meta account needed.'),
         const SizedBox(height: 16),
         if (serial == null)
           const EmptyState(icon: Icons.headset_off, title: 'No headset connected', body: 'Connect your Quest 2 from Home or Devices to mirror it.'),
-        if (builtin) _liveViewCard(serial),
-        if (!builtin)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(children: [
-              Icon(_mirroring ? Icons.cast_connected : Icons.cast, size: 64, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(height: 12),
-              Text(_mirroring ? 'Mirror is running in its own window.' : 'Mirror is off.', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              const Text('scrcpy opens in its own window.'),
-              const SizedBox(height: 16),
-              Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
-                FilledButton.icon(
-                  onPressed: serial == null ? null : (_mirroring ? () => _stopMirror() : _mirror),
-                  icon: Icon(_mirroring ? Icons.stop : Icons.play_arrow),
-                  label: Text(_mirroring ? 'Stop mirror' : 'Start mirror'),
-                ),
-                if (_mirroring)
-                  OutlinedButton.icon(
-                    onPressed: serial == null ? null : _restartMirror,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Restart mirror'),
-                  ),
-              ]),
-              const SizedBox(height: 12),
-              const Text('If the picture smears or goes black after you open the Quest menu over a game, tap Restart mirror. The menu switches what the headset is showing, and the video can lose its key frame, so restarting reattaches it.', textAlign: TextAlign.center),
-            ]),
-          ),
-        ),
+        _liveViewCard(serial),
         CardGrid(cards: [
-          // scrcpy quality presets only exist for scrcpy; the
-          // built-in stream runs at a fixed 1280x720.
-          if (!builtin)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  const Expanded(child: Text('Quality', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-                  InfoButton('Mirror quality', 'Pick the mirror quality for USB and for Wi-Fi. Performance is the smoothest (1280, 4M, 30), Balanced is the middle (1920, 8M, 60), Quality is the sharpest (2560, 12M, 90) but needs a fast connection, so Wi-Fi usually glitches on it. The change applies the next time you start the mirror. If the picture smears after you open the Quest menu, tap Restart mirror.'),
-                ]),
-                const SizedBox(height: 4),
-                _qualityRow('USB', _quality.usbQuality, (v) => _saveQuality(usb: v)),
-                _qualityRow('Wi-Fi', _quality.wifiQuality, (v) => _saveQuality(wifi: v)),
-                const SizedBox(height: 4),
-                TextButton(
-                  onPressed: () async {
-                    final q = await widget.state.backend.resetMirrorSettings();
-                    if (q != null && mounted) setState(() => _quality = q);
-                  },
-                  child: const Text('Reset to defaults (USB Balanced, Wi-Fi Performance)'),
-                ),
-                SwitchListTile(
-                  title: const Text('Restart automatically'),
-                  subtitle: const Text('When a game or the menu opens, the mirror restarts itself instead of smearing. The picture goes black for a second or two.'),
-                  value: _quality.autoRestart,
-                  onChanged: (v) => _setAutoRestart(v),
-                ),
-              ]),
-            ),
-          ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -1612,19 +1541,9 @@ class _MirrorScreenState extends State<MirrorScreen> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
-                    onPressed: serial == null
+                    onPressed: serial == null || _finishing
                         ? null
-                        : () async {
-                            setState(() => _recording = !_recording);
-                            if (_recording) {
-                              final r = await widget.state.backend.startRecording(serial);
-                              if (mounted) showResult(context, r.ok, r.message);
-                              if (r.ok && mounted) {
-                                setState(() => _lastSaved = (r.data['path'] as String?) ?? r.message);
-                                widget.state.log('Recording saved');
-                              }
-                            }
-                          },
+                        : (_recording ? _stopRecording : _startRecording),
                     icon: Icon(_recording ? Icons.stop : Icons.fiber_manual_record),
                     label: Text(_recording ? 'Stop recording' : 'Record video'),
                   ),
@@ -1645,7 +1564,7 @@ class _MirrorScreenState extends State<MirrorScreen> {
                   ),
                 ]),
                 const SizedBox(height: 8),
-                const Text('Video has no sound. A recording stops after about 3 minutes; start it again for longer clips. Screenshots and recordings are saved in ~/quest-recordings/ and shown in Files, then Gallery.', style: TextStyle(fontSize: 13)),
+                const Text('Video has no sound. A recording keeps going until you stop it: every 3 minutes it starts a new piece and joins them into one video at the end, so long sessions are one file. Screenshots and recordings are saved in ~/quest-recordings/ and shown in Files, then Gallery.', style: TextStyle(fontSize: 13)),
               ]),
             ),
           ),
@@ -1751,7 +1670,6 @@ class _LogsScreenState extends State<LogsScreen> {
     b.writeln('ReOculus debug info');
     b.writeln('questctl: ${d.questctlVersion}');
     b.writeln('adb: ${d.adbVersion}');
-    b.writeln('scrcpy: ${d.scrcpyAvailable ? 'present' : 'not installed'}');
     b.writeln('backend: ${d.backendPath}');
     if (dev != null) {
       b.writeln('device: ${dev.model} ${dev.serial} (${dev.firmware}, Android ${dev.androidVersion})');
@@ -1954,7 +1872,6 @@ class _LogsScreenState extends State<LogsScreen> {
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Text('questctl version: ${_debug!.questctlVersion}'),
                               Text('adb version: ${_debug!.adbVersion}'),
-                              Text('scrcpy: ${_debug!.scrcpyAvailable ? 'present' : 'not installed'}'),
                               Text('backend path: ${_debug!.backendPath}'),
                               if (_debug!.device != null) ...[
                                 const SizedBox(height: 8),
@@ -2256,7 +2173,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.35. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
+                  const Text('ReOculus 0.2.36. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),

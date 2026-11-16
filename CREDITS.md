@@ -18,7 +18,6 @@ the AppImage carries `LICENSE`, this file, and the full GPLv3 text
 
 | Component | Licence | Source | How it is used |
 | --- | --- | --- | --- |
-| **scrcpy** | Apache 2.0 | https://github.com/Genymobile/scrcpy | Screen mirroring. Runs as the system `scrcpy` binary; ReOculus spawns it and never embeds it. |
 | **Android platform tools (adb)** | Apache 2.0 | https://developer.android.com/tools/adb | The transport to the headset. Runs as the system `adb` binary. |
 | **Singularity** (APK, Frida server binary, domain blocklist) | Closed source (no open-source licence granted) | https://github.com/Lumince/singularity | Downloaded at runtime only when the user asks: the Singularity APK from its GitHub releases, the Frida server binary and the `hosts` blocklist from the repo. Nothing is bundled with ReOculus and nothing is stored in git. Singularity itself is never copied or reimplemented, only its published downloads and settings are used. |
 | **Frida** (the Frida server binary, as shipped in the Singularity repo) | wxWindows Library Licence 3.1 | https://github.com/frida/frida | A researcher tool for inspecting processes on the headset. Downloaded at runtime from the Singularity repo when the user asks for it, never bundled. |

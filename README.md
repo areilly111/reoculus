@@ -21,7 +21,7 @@ Why? Meta is winding down Quest 2 support (last features in Horizon OS v2.13, Ma
 | 📱 | **Apps** | List, search, launch, install (APK/APKS/XAPK), uninstall, force stop, clear data. Real icons and sizes, List or Tiles view. |
 | 💾 | **Backups** | Full app backup (APK + data when rooted), save-only backup, one-tap restore from the Library, with a dry run first so nothing surprises you. |
 | 📂 | **Files** | Browse the headset storage, upload, download, delete. |
-| 🪞 | **Mirror** | Live screen mirror over USB or Wi-Fi (scrcpy, quality per connection, and it restarts itself when a game or the menu opens). Screenshot and on-device video recording. |
+| 🪞 | **Mirror** | Live screen mirror over USB or Wi-Fi (built-in H.264 stream, decoded in the app; both-eyes or flat view). Screenshot and on-device video recording, as long as you want. |
 | 🎛️ | **Device** | Battery, storage, firmware, controllers, refresh rate and performance settings. Rooted-only settings live in their own section, out of the way. |
 | 🖥️ | **PC VR** | WiVRn 26.9 wrapper: start/stop the server, encoder and codec picker, headset client version check. The server rides along inside the AppImage, and the headset app installs itself on first connect. |
 | 📚 | **Library** | One folder on your computer holds every backup and imported APK. |
@@ -120,7 +120,7 @@ Meta Quest 2 / 3  (USB adb, Wi-Fi adb)
 - **No Meta APIs, no SideQuest APIs, no account, no network calls** to anyone. The only thing that ever leaves the computer is whatever you explicitly download (the WiVRn APK from GitHub Releases, on first setup).
 - **Backend:** Rust workspace in `backend/`, a `quest-core` library plus the `questctl` CLI. Every command prints one JSON object, `{"ok": true, ...}` or `{"ok": false, "error": "..."}`. The exact interface is in [`backend/CONTRACT.md`](backend/CONTRACT.md).
 - **UI:** Flutter in `flutter_app/`. Dark VR Neon, blue. Near-black blue background, bright blue accent. Other themes are in the code if you want to play with them.
-- **Streaming:** [scrcpy](https://github.com/Genymobile/scrcpy) for the mirror, on-device `screenrecord` for video recording.
+- **Streaming:** the built-in H.264 mirror (on-device `screenrecord`, decoded with the system ffmpeg libraries on Linux and MediaCodec on Android), on-device `screenrecord` for video recording.
 - **PC VR:** [WiVRn 26.9](https://github.com/WiVRn/WiVRn), an OpenXR runtime and streamer built on Monado. The app drives the unmodified server (config file + process + `wivrnctl` + polling). It does not fork or embed WiVRn.
 
 ## 🖥️ PC VR
@@ -162,6 +162,8 @@ The APK now works on Android over Wi-Fi: it bundles the `questctl` binary built 
 
 ## 📋 Status
 
+**0.2.36** (2026-11-15): scrcpy is gone, the built-in stream is the only mirror now. The Mirror screen has a view switch instead: Both eyes (the headset display as it is) or Flat (one eye only, as a normal flat picture). The stream is steadier on the tablet: it runs at 4 Mbps instead of 8, and the app feeds the decoder on a steady tick with a small queue instead of firing a call per chunk, trading a little latency for fewer glitches. Recordings run as long as you want: hit Record and it keeps going in 3-minute pieces, then joins them into one video when you stop (an .mp4 when ffmpeg is installed, otherwise a raw .h264 VLC can play).
+
 **0.2.35** (2026-11-15): The PC mirror has a built-in option now, no scrcpy needed. The Mirror screen has a method switch: scrcpy (default, 35 to 70 ms, its own window) or Built-in stream (the same H.264 stream the Android app uses, decoded inside the app window with the system's ffmpeg libraries, loaded at runtime so the AppImage stays small; without ffmpeg installed it says so and scrcpy still works, about a second behind, restarts every 3 minutes). The choice is saved per computer in the mirror settings (`mirror-settings set --method scrcpy|builtin`). The Android live view is unchanged.
 
 **0.2.34** (2026-11-15): Mirror works on Android now. The Android app is for people without a PC, so the mirror has to work there too, and it does: questctl streams the headset display as raw H.264 with a new `device mirror-stream` command (screenrecord at 1280x720 over the direct transport, restarted every 3 minutes because screenrecord caps at 180 s per run), and the app decodes it on the device with MediaCodec into a Flutter texture on the Mirror screen. It is view only, about a second behind, and the picture restarts itself every 3 minutes with a brief black gap. The backend gained a streaming shell for both transports (`shell_stream`, frames as they arrive instead of collected output) to carry it. Linux is unchanged, still scrcpy with its presets and watcher.
@@ -197,7 +199,7 @@ The APK now works on Android over Wi-Fi: it bundles the `questctl` binary built 
 
 ## ⚖️ License and credits
 
-This project's own code is **MIT**. See [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md) for the full list: WiVRn (GPLv3, bundled server only), scrcpy (Apache 2.0), SideQuest (reference only, no code used), and the other projects this app is built on or learned from.
+This project's own code is **MIT**. See [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md) for the full list: WiVRn (GPLv3, bundled server only), SideQuest (reference only, no code used), and the other projects this app is built on or learned from.
 
 ## ⚠️ Use at your own risk
 

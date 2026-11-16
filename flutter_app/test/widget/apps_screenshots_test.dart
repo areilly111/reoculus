@@ -208,7 +208,6 @@ class FakeBackend implements BackendService {
     if (name == #cliPath) return '';
     if (name == #directAddr) return null;
     if (name == #androidHome) return null;
-    if (name == #scrcpyAvailable) return Future<bool>.value(false);
     if (name == #listFiles) return Future<List<QuestFile>>.value(_files);
     if (name == #listGallery) return Future<List<GalleryEntry>>.value(_gallery);
     if (name == #logLines) return Future<List<String>>.value(_logLines);
@@ -231,8 +230,7 @@ class FakeBackend implements BackendService {
     if (name == #listDeviceBackups) return Future<List<DeviceBackupEntry>>.value(_deviceBackups);
     if (name == #homesList) return Future<List<HomeEntry>>.value(_homes);
     if (name == #homesCurrent) return Future<String?>.value('com.lorem.ipsum/.HomeActivity');
-    if (name == #startMirrorWatch) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Mirror watcher started.'));
-    if (name == #stopMirrorWatch) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Mirror watcher stopped.'));
+    if (name == #finishRecording) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Recording saved.', data: {'path': '/home/lorem/quest-recordings/rec-test.mp4'}));
     if (name == #homesSet) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home switched.'));
     if (name == #homesOpenSettings) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Home settings are open on the headset.'));
     if (name == #homesOpen) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Opened on the headset.'));
@@ -297,7 +295,7 @@ class FakeBackend implements BackendService {
       ));
     }
     if (name == #mirrorSettings || name == #setMirrorSettings || name == #resetMirrorSettings) {
-      return Future<MirrorSettings?>.value(const MirrorSettings(usbQuality: 'balanced', wifiQuality: 'performance'));
+      return Future<MirrorSettings?>.value(const MirrorSettings(view: 'stereo'));
     }
     if (name == #batteryHistory) {
       return Future<BatteryHistory?>.value(BatteryHistory(
@@ -457,7 +455,6 @@ class FakeBackend implements BackendService {
         questctlVersion: 'Lorem ipsum',
         adbVersion: 'Lorem ipsum',
         backendPath: 'Fake backend',
-        scrcpyAvailable: false,
         root: RootStatus(rooted: true, method: 'Magisk', suPresent: true, magiskPresent: true, singularityPresent: false),
         device: _deviceInfo,
       ));

@@ -124,15 +124,10 @@ abstract class BackendService {
   /// Take a screenshot. An empty outPath saves into the gallery folder
   /// with a timestamp name.
   Future<BackendResult> screenshot(String serial, String outPath);
-  /// Start mirroring the headset screen with scrcpy. preset is
-  /// Performance, Balanced or Quality; the backend sets the real
-  /// resolution and bitrate.
-  Future<BackendResult> startMirror(String serial, String preset);
-  /// Stop the running mirror.
-  Future<BackendResult> stopMirror(String serial);
-  /// Record the headset screen into the gallery folder. Fixed 60
-  /// seconds: there is no stop yet, it ends on its own.
-  Future<BackendResult> startRecording(String serial);
+  /// Finish a long recording started with record-loop: stitch the
+  /// segments in `dir` into one video at `out`. The backend remuxes
+  /// to .mp4 when ffmpeg is installed.
+  Future<BackendResult> finishRecording(String serial, String dir, String out);
   /// Screenshots and recordings in the gallery folder on this computer.
   Future<List<GalleryEntry>> listGallery();
   /// Delete one screenshot or recording from the gallery folder.
@@ -257,20 +252,12 @@ abstract class BackendService {
   Future<PathsInfo?> pathsSet({String? backupRoot, String? recordingsRoot});
   /// Put the backup and recordings folders back to their defaults.
   Future<PathsInfo?> pathsReset();
-  /// Saved mirror quality for USB and Wi-Fi, and whether the mirror
-  /// auto-restarts. Null when unreadable.
+  /// Saved mirror view (stereo or flat). Null when unreadable.
   Future<MirrorSettings?> mirrorSettings();
-  /// Save mirror quality and auto-restart. Only the values passed
-  /// in change.
-  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart, String? method});
-  /// Put the mirror settings back to their defaults.
+  /// Save the mirror view. Only the value passed in changes.
+  Future<MirrorSettings?> setMirrorSettings({String? view});
+  /// Put the mirror view back to its default (both eyes).
   Future<MirrorSettings?> resetMirrorSettings();
-  /// Start the mirror watcher: it restarts scrcpy whenever the
-  /// headset switches apps, so the mirror survives menu changes.
-  /// transport is usb or wifi.
-  Future<BackendResult> startMirrorWatch(String serial, String preset, String transport);
-  /// Stop the mirror watcher.
-  Future<BackendResult> stopMirrorWatch(String serial);
   // ---- Singularity (root) ----
   /// Preflight checks before rooting with Singularity: is the headset
   /// ready, and what is missing. Null when the check itself fails.
@@ -407,8 +394,6 @@ abstract class BackendService {
   /// Apply a named settings profile (Balanced, Smooth, Battery
   /// saver). The backend maps it to its closest built-in profile.
   Future<BackendResult> applyProfile(String serial, SettingProfile profile);
-  /// Is scrcpy installed on this computer. The mirror needs it.
-  Future<bool> get scrcpyAvailable;
 }
 
 /// Gallery folder on this computer: ~/quest-recordings/ (screenshots
@@ -818,30 +803,21 @@ class RealBackend implements BackendService {
   }
 
   @override
-  /// The preset name is lowercased before it reaches the backend
-  /// (Performance, Balanced, Quality map to real scrcpy limits there).
-  Future<BackendResult> startMirror(String serial, String preset) async =>
-      // The preset is passed to the backend and sets real scrcpy
-      // limits: Performance 1280/4M/30fps, Balanced 1920/8M/60fps,
-      // Quality 2560/12M/90fps, all h265, no audio.
-      _toResult(await _run(['device', 'mirror', '--serial', serial, '--preset', preset.toLowerCase()]));
-
-  @override
-  @override
-  Future<BackendResult> stopMirror(String serial) async =>
-      _toResult(await _run(['device', 'mirror-stop', '--serial', serial]));
-
-  @override
-  /// Records a fixed 60 seconds to the gallery folder. There is no
-  /// stop yet; it ends on its own.
-  Future<BackendResult> startRecording(String serial) async {
-    // Contract: `device record` requires --out <file.mp4> [--seconds].
-    // Recordings go to ~/quest-recordings/rec-<timestamp>.mp4.
-    final dir = Directory(galleryDir());
-    await dir.create(recursive: true);
-    final out = '${dir.path}/rec-${_stamp()}.mp4';
-    final r = await _run(['device', 'record', '--serial', serial, '--out', out, '--seconds', '60']);
-    if (r['ok'] == true) return BackendResult(ok: true, message: 'Recording saved to $out', data: {'path': out});
+  /// Stitches the segments from a long recording into one video
+  /// at `out`. Contract: `device record-finish --serial X --dir
+  /// <dir> --out <file.mp4>`. The backend remuxes to .mp4 when
+  /// ffmpeg is installed, otherwise the result is a raw .h264.
+  Future<BackendResult> finishRecording(String serial, String dir, String out) async {
+    final r = await _run(['device', 'record-finish', '--serial', serial, '--dir', dir, '--out', out]);
+    if (r['ok'] == true) {
+      final path = (r['path'] as String?) ?? out;
+      final n = r['segments'];
+      final note = r['note'] as String?;
+      final msg = note != null
+          ? 'Recording saved to $path ($n parts). $note'
+          : 'Recording saved to $path ($n parts)';
+      return BackendResult(ok: true, message: msg, data: {'path': path});
+    }
     return _toResult(r);
   }
 
@@ -1123,12 +1099,9 @@ class RealBackend implements BackendService {
   }
 
   @override
-  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart, String? method}) async {
+  Future<MirrorSettings?> setMirrorSettings({String? view}) async {
     final args = ['mirror-settings', 'set'];
-    if (usbQuality != null) args.addAll(['--usb', usbQuality]);
-    if (wifiQuality != null) args.addAll(['--wifi', wifiQuality]);
-    if (autoRestart != null) args.addAll(['--auto-restart', autoRestart ? 'on' : 'off']);
-    if (method != null) args.addAll(['--method', method]);
+    if (view != null) args.addAll(['--view', view]);
     final j = await _run(args);
     if (j['ok'] != true) return null;
     return MirrorSettings.fromJson(j);
@@ -1140,14 +1113,6 @@ class RealBackend implements BackendService {
     if (j['ok'] != true) return null;
     return MirrorSettings.fromJson(j);
   }
-
-  @override
-  Future<BackendResult> startMirrorWatch(String serial, String preset, String transport) async =>
-      _toResult(await _run(['device', 'mirror-watch-start', '--serial', serial, '--preset', preset, '--connection', transport]));
-
-  @override
-  Future<BackendResult> stopMirrorWatch(String serial) async =>
-      _toResult(await _run(['device', 'mirror-watch-stop', '--serial', serial]));
 
   @override
   // ---- Singularity (root) ----
@@ -1367,7 +1332,6 @@ class RealBackend implements BackendService {
       questctlVersion: (j['questctl_version'] ?? '').toString(),
       adbVersion: (j['adb_version'] ?? '').toString(),
       backendPath: (j['backend_path'] ?? '').toString(),
-      scrcpyAvailable: j['scrcpy_available'] == true,
       wifiIp: (j['wifi_ip'] as String?)?.isNotEmpty == true ? j['wifi_ip'] as String : null,
       root: RootStatus.fromJson((j['root'] as Map?)?.cast<String, dynamic>() ?? {}),
       device: info,
@@ -1524,16 +1488,4 @@ class RealBackend implements BackendService {
         '--profile',
         profileNameFor(p),
       ]));
-
-  @override
-  /// Checks with `which scrcpy`. False on Android and when scrcpy
-  /// is not installed.
-  Future<bool> get scrcpyAvailable async {
-    try {
-      final r = await Process.run('which', ['scrcpy']);
-      return r.exitCode == 0;
-    } catch (_) {
-      return false;
-    }
-  }
 }

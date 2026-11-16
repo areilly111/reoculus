@@ -167,7 +167,7 @@ fn files_list_push_pull() {
 }
 
 #[test]
-fn device_screenshot_record_logcat_mirror() {
+fn device_screenshot_record_logcat_record_finish() {
     let dir = tempfile::tempdir().unwrap();
     let shot = dir.path().join("shot.png");
     ok(&[
@@ -197,32 +197,25 @@ fn device_screenshot_record_logcat_mirror() {
     let v = ok(&["device", "logcat", "--serial", "TESTSERIAL000001"]);
     assert!(v["lines"].as_array().unwrap().len() >= 1);
 
-    // Mirror depends on the host: scrcpy is not installed in the VM
-    // sandbox (must fail cleanly with a hint), but it IS installed
-    // on the main PC (2026-11-12), where this same test runs against
-    // the mock adb and scrcpy stays alive long enough to count as
-    // launched. Either outcome is a pass, as long as the result is
-    // a clean JSON ok:false mentioning scrcpy, or ok:true launched.
-    let scrcpy_present = std::path::Path::new("/usr/bin/scrcpy").exists()
-        || std::path::Path::new("/usr/local/bin/scrcpy").exists()
-        || std::env::var_os("PATH")
-            .map(|p| std::env::split_paths(&p).any(|d| d.join("scrcpy").exists()))
-            .unwrap_or(false);
-    let (code, v) = cli(&["device", "mirror", "--serial", "TESTSERIAL000001"]);
-    if scrcpy_present {
-        // Launched against the mock device (scrcpy survives the 900 ms
-        // check), or it died right away on a headless host: both are
-        // clean, documented outcomes, not a crash.
-        if code == 0 {
-            assert_eq!(v["launched"], true);
-        } else {
-            assert!(v["error"].as_str().unwrap().contains("scrcpy"));
-        }
-    } else {
-        assert_ne!(code, 0, "expected failure for mirror, got: {v}");
-        assert_eq!(v["ok"], false);
-        assert!(v["error"].as_str().unwrap().contains("scrcpy"));
-    }
+    // record-finish stitches local segments into one file. The
+    // mock has no segments on the device (its `ls` is unhandled),
+    // so the two local pieces are all it stitches. The pieces are
+    // not real H.264, so even where ffmpeg exists the remux fails
+    // and the result stays a raw .h264.
+    let segdir = dir.path().join("segs");
+    std::fs::create_dir(&segdir).unwrap();
+    std::fs::write(segdir.join("questcompanion_rec_1794444000_1.h264"), b"AAA").unwrap();
+    std::fs::write(segdir.join("questcompanion_rec_1794444000_2.h264"), b"BBB").unwrap();
+    let out = dir.path().join("long.mp4");
+    let v = ok(&[
+        "device", "record-finish", "--serial", "TESTSERIAL000001",
+        "--dir", segdir.to_str().unwrap(), "--out", out.to_str().unwrap(),
+    ]);
+    assert_eq!(v["segments"], 2);
+    assert_eq!(v["format"], "h264");
+    let got = std::path::Path::new(v["path"].as_str().unwrap());
+    assert!(got.exists());
+    assert_eq!(std::fs::read(got).unwrap(), b"AAABBB");
 }
 
 #[test]

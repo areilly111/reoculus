@@ -22,8 +22,7 @@
 // shared libraries means shipping ffmpeg's whole dependency
 // closure. The AppImage therefore needs nothing: on a computer
 // with ffmpeg installed the built-in stream just works, and
-// without it create() fails with a clear message and scrcpy is
-// still there as the default.
+// without it create() fails with a clear message.
 
 #include "h264_decoder_plugin.h"
 
@@ -245,7 +244,7 @@ static gboolean h264_decoder_open(H264Decoder* dec, GError** error) {
   if (!ff_load()) {
     g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
                 "This computer does not have the ffmpeg video libraries "
-                "installed. Install ffmpeg, or use scrcpy instead.");
+                "installed. Install ffmpeg to use the live view.");
     return FALSE;
   }
   const AVCodec* codec = g_ff.find_decoder(AV_CODEC_ID_H264);

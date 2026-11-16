@@ -10,7 +10,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
-use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, headset_config, health, home_apps, homes, library, media, mirror_settings, mirror_watch, paths, settings, setup_checks, singularity, singularity_settings, snapshot, steamvr, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
+use quest_core::{apk_analyzer, apps, backup, battery_history, device_backup, devices, files, gallery, headset_config, health, home_apps, homes, library, media, mirror_settings, paths, settings, setup_checks, singularity, singularity_settings, snapshot, steamvr, update_block, wireless, wivrn, wivrn_apps, wivrn_settings};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -358,23 +358,14 @@ struct MirrorSettingsArgs {
 }
 #[derive(Subcommand)]
 enum MirrorSettingsCmd {
-    /// Show the mirror quality picked for USB and for Wi-Fi.
+    /// Show the mirror view (stereo or flat).
     Get,
-    /// Pick the mirror quality for USB and/or Wi-Fi
-    /// (performance, balanced or quality), and/or turn
-    /// auto-restart on or off, and/or pick the mirror method
-    /// (scrcpy or builtin).
+    /// Pick the mirror view: stereo (both eyes) or flat (one eye).
     Set {
         #[arg(long)]
-        usb: Option<String>,
-        #[arg(long)]
-        wifi: Option<String>,
-        #[arg(long)]
-        auto_restart: Option<String>,
-        #[arg(long)]
-        method: Option<String>,
+        view: Option<String>,
     },
-    /// Go back to the defaults (USB Balanced, Wi-Fi Performance).
+    /// Go back to the default view (both eyes).
     Reset,
 }
 
@@ -661,7 +652,7 @@ enum DevicesCmd {
         command: String,
     },
     /// Host + headset debug info for the Terminal screen: questctl
-    /// version, adb version, scrcpy, backend path, device info,
+    /// version, adb version, backend path, device info,
     /// Wi-Fi IP, root status. All read-only.
     DebugInfo {
         #[arg(long)]
@@ -1015,54 +1006,32 @@ enum DeviceCmd {
         #[arg(long)]
         follow: bool,
     },
-    /// Stop a running scrcpy mirror for this serial.
-    MirrorStop {
-        #[arg(long)]
-        serial: String,
-    },
-    /// Launch scrcpy in its own window.
-    Mirror {
-        #[arg(long)]
-        serial: String,
-        #[arg(long, default_value = "balanced")]
-        preset: String,
-    },
     /// Stream the headset display as raw H.264 (Annex B) to stdout,
-    /// for the Android live view. Runs until killed (no JSON envelope).
+    /// for the live view. Runs until killed (no JSON envelope).
     MirrorStream {
         #[arg(long)]
         serial: String,
     },
-    /// Watch the foreground activity and restart the mirror when
-    /// it changes (a game or the menu opens). Spawns the watcher
-    /// detached; stopping the mirror stops it.
-    MirrorWatchStart {
+    /// Record the headset screen in 180 s segments until killed:
+    /// long recordings without the 3-minute cap. Each finished
+    /// segment is pulled into --dir as raw H.264. Runs until killed
+    /// (no JSON envelope); `record-finish` stitches the pieces.
+    RecordLoop {
         #[arg(long)]
         serial: String,
-        #[arg(long, default_value = "balanced")]
-        preset: String,
-        #[arg(long, default_value = "usb")]
-        connection: String,
+        #[arg(long)]
+        dir: PathBuf,
     },
-    /// The watcher loop itself (run detached by
-    /// mirror-watch-start). Runs until killed.
-    MirrorWatchRun {
+    /// Finish a long recording started with record-loop: pull any
+    /// segments still on the headset, stitch them into one video,
+    /// remux to .mp4 when ffmpeg is installed.
+    RecordFinish {
         #[arg(long)]
         serial: String,
-        #[arg(long, default_value = "balanced")]
-        preset: String,
-        #[arg(long, default_value = "usb")]
-        connection: String,
-    },
-    /// Stop the mirror watcher for this serial.
-    MirrorWatchStop {
         #[arg(long)]
-        serial: String,
-    },
-    /// Is the mirror watcher running for this serial?
-    MirrorWatchStatus {
+        dir: PathBuf,
         #[arg(long)]
-        serial: String,
+        out: PathBuf,
     },
     /// Reboot the headset (`adb -s <serial> reboot`).
     Reboot {
@@ -1409,15 +1378,10 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             MirrorSettingsCmd::Get => {
                 Ok(serde_json::to_value(mirror_settings::get_mirror_settings())?)
             }
-            MirrorSettingsCmd::Set { usb, wifi, auto_restart, method } => {
-                let auto = match auto_restart {
-                    Some(v) => Some(mirror_settings::normalize_on_off(v)?),
-                    None => None,
-                };
-                Ok(serde_json::to_value(
-                    mirror_settings::set_mirror_settings(usb.clone(), wifi.clone(), auto, method.clone())?,
-                )?)
-            }            MirrorSettingsCmd::Reset => Ok(serde_json::to_value(
+            MirrorSettingsCmd::Set { view } => Ok(serde_json::to_value(
+                mirror_settings::set_mirror_settings(view.clone())?,
+            )?),
+            MirrorSettingsCmd::Reset => Ok(serde_json::to_value(
                 mirror_settings::reset_mirror_settings(),
             )?),
         },
@@ -1588,7 +1552,6 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 Ok(json!({
                     "questctl_version": env!("CARGO_PKG_VERSION"),
                     "adb_version": adb_version,
-                    "scrcpy_available": media::find_scrcpy().is_some(),
                     "backend_path": std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
                     "device": info,
                     "wifi_ip": wireless::wifi_ip(t.as_ref(), serial),
@@ -1794,33 +1757,23 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 let lines = media::logcat_dump(t.as_ref(), serial)?;
                 Ok(json!({ "lines": lines }))
             }
-            DeviceCmd::MirrorStop { serial } => {
-                let n = media::mirror_stop(serial)?;
-                Ok(json!({ "stopped": n, "serial": serial }))
-            }
-            DeviceCmd::Mirror { serial, preset } => {
-                let m = media::mirror(t.as_ref(), serial, preset)?;
-                Ok(json!({ "launched": true, "command": m.command, "note": m.note }))
-            }
             DeviceCmd::MirrorStream { .. } => {
                 // Handled in main() before run(): it streams raw H.264,
                 // not JSON, so this arm is never reached.
                 unreachable!("device mirror-stream is handled in main()")
             }
-            DeviceCmd::MirrorWatchStart { serial, preset, connection } => {
-                let s = mirror_watch::start_watch(serial, preset, connection)?;
-                Ok(serde_json::to_value(s)?)
+            DeviceCmd::RecordLoop { .. } => {
+                // Handled in main() before run(): it runs until killed,
+                // not JSON, so this arm is never reached.
+                unreachable!("device record-loop is handled in main()")
             }
-            DeviceCmd::MirrorWatchRun { serial, preset, connection } => {
-                mirror_watch::run_watch(t.as_ref(), serial, preset, connection);
-            }
-            DeviceCmd::MirrorWatchStop { serial } => {
-                let stopped = mirror_watch::stop_watch(serial)?;
-                Ok(json!({ "stopped": stopped, "serial": serial }))
-            }
-            DeviceCmd::MirrorWatchStatus { serial } => {
-                let s = mirror_watch::watch_status(serial);
-                Ok(serde_json::to_value(s)?)
+            DeviceCmd::RecordFinish { serial, dir, out } => {
+                let rec = media::record_finish(t.as_ref(), serial, dir, out)?;
+                let mut v = json!({ "path": rec.path, "segments": rec.segments, "format": rec.format });
+                if let Some(note) = rec.note {
+                    v["note"] = json!(note);
+                }
+                Ok(v)
             }
             DeviceCmd::Reboot { serial } => {
                 t.reboot(&target(cli, serial))?;
@@ -1968,14 +1921,42 @@ fn mirror_stream(cli: &Cli, serial: &str) -> ExitCode {
     }
 }
 
+/// `device record-loop` records in 180 s segments until killed.
+/// Prints one line per saved segment; an error goes to stderr and
+/// the process exits non-zero.
+fn record_loop(cli: &Cli, serial: &str, dir: &std::path::Path) -> ExitCode {
+    let kind = match TransportKind::from_str(&cli.transport) {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(1);
+        }
+    };
+    let t = match make_transport(&kind) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(1);
+        }
+    };
+    match media::record_loop(t.as_ref(), serial, dir) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::from(1)
+        }
+    }
+}
+
 /// Entry point: parse the CLI, run the command as JSON, and print
 /// `{"ok": true, ...}` or `{"ok": false, "error": "..."}`. `logcat
-/// --follow` and `device mirror-stream` are the exceptions: they
-/// stream raw bytes instead of JSON.
+/// --follow`, `device mirror-stream` and `device record-loop` are the
+/// exceptions: they stream raw bytes or run until killed instead of
+/// returning JSON.
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    // Follow mode and mirror-stream are the non-JSON paths, by
-    // design (see CONTRACT.md).
+    // Follow mode, mirror-stream and record-loop are the non-JSON
+    // paths, by design (see CONTRACT.md).
     if let Commands::Device(a) = &cli.cmd {
         if let DeviceCmd::Logcat { serial, follow } = &a.cmd {
             if *follow {
@@ -1984,6 +1965,9 @@ fn main() -> ExitCode {
         }
         if let DeviceCmd::MirrorStream { serial } = &a.cmd {
             return mirror_stream(&cli, serial);
+        }
+        if let DeviceCmd::RecordLoop { serial, dir } = &a.cmd {
+            return record_loop(&cli, serial, dir);
         }
     }
     match run(&cli) {

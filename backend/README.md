@@ -60,9 +60,9 @@ The `adb` binary is resolved as: `QUEST_COMPANION_ADB` env, then
 `QUEST_ADB`, then `~/workspace/android-sdk/platform-tools/adb`, then
 `~/Android/Sdk/platform-tools/adb`, then `adb` on PATH.
 
-scrcpy is **not** installed in this sandbox. `device mirror` fails
-cleanly with install instructions until it is
-(`sudo apt install scrcpy`, or the GitHub releases).
+The mirror is the built-in H.264 stream (`device mirror-stream`,
+decoded in the app); it needs the system ffmpeg libraries on Linux
+and MediaCodec on Android, and no scrcpy at all (removed in 0.2.36).
 
 ## Phase 0 spike — libadb (result)
 
@@ -119,7 +119,7 @@ $BIN --json device screenshot --serial TESTSERIAL000001 --out ~/shot.png
 $BIN --json device record --serial TESTSERIAL000001 --out ~/rec.mp4 --seconds 60   # max 180
 $BIN --json device logcat --serial TESTSERIAL000001
 $BIN --json device logcat --serial TESTSERIAL000001 --follow   # raw stream, no JSON
-$BIN --json device mirror --serial TESTSERIAL000001           # needs scrcpy
+$BIN --json device mirror-stream --serial TESTSERIAL000001   # raw H.264 to stdout, until killed
 
 $BIN --json settings get --serial TESTSERIAL000001 --key debug.oculus.refreshRate
 $BIN --json settings set --serial TESTSERIAL000001 --key debug.oculus.refreshRate --value 90

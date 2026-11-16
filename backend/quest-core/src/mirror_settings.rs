@@ -1,86 +1,43 @@
-/// Mirror quality settings, one preset per connection type, plus
-/// which mirror to use: scrcpy in its own window, or the built-in
-/// H.264 stream shown inside the app (the same stream the Android
-/// app uses, decoded on this computer).
+/// Mirror view setting: the headset display is two eye views side
+/// by side, and the app can show both or a flat single-eye view.
 ///
-/// The mirror used to pick its own quality (USB = Balanced,
-/// Wi-Fi = Performance) with no setting to change. Now the user
-/// can pick each one. The choice is kept in
-/// `~/.config/quest-companion/mirror.json` and read by the app
-/// when it starts a mirror. The defaults are the old automatic
-/// picks, so nothing changes until the user changes it.
+/// The choice is kept in `~/.config/quest-companion/mirror.json`
+/// and read by the app when the Mirror screen opens. The default
+/// is both eyes. This file used to hold scrcpy quality presets,
+/// an auto-restart flag and a mirror method; scrcpy is gone
+/// (0.2.36), the built-in H.264 stream is the only mirror now,
+/// so the view is all that is left. An old file with the removed
+/// keys still loads: unknown keys are ignored and the view falls
+/// back to the default.
 
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const PRESET_PERFORMANCE: &str = "performance";
-pub const PRESET_BALANCED: &str = "balanced";
-pub const PRESET_QUALITY: &str = "quality";
+/// Both eye views side by side, as the headset sees them.
+pub const VIEW_STEREO: &str = "stereo";
+/// One eye only, at its own aspect, flat.
+pub const VIEW_FLAT: &str = "flat";
 
-/// scrcpy in its own window (the original mirror, low latency).
-pub const METHOD_SCRCPY: &str = "scrcpy";
-/// The built-in H.264 stream, decoded in the app window.
-pub const METHOD_BUILTIN: &str = "builtin";
+/// Both eyes is the default: it is what the headset shows.
+pub const DEFAULT_VIEW: &str = VIEW_STEREO;
 
-/// The old automatic picks, kept as the defaults.
-pub const DEFAULT_USB_QUALITY: &str = PRESET_BALANCED;
-pub const DEFAULT_WIFI_QUALITY: &str = PRESET_PERFORMANCE;
-/// scrcpy stays the default: it is 35 to 70 ms behind, the
-/// built-in stream is about a second behind.
-pub const DEFAULT_METHOD: &str = METHOD_SCRCPY;
-
-/// A mirror method name, lowercased, or an error naming the bad value.
-pub fn normalize_method(value: &str) -> Result<String> {
+/// A view name, lowercased, or an error naming the bad value.
+pub fn normalize_view(value: &str) -> Result<String> {
     let v = value.trim().to_lowercase();
     match v.as_str() {
-        METHOD_SCRCPY | METHOD_BUILTIN => Ok(v),
+        VIEW_STEREO | VIEW_FLAT => Ok(v),
         _ => Err(Error(format!(
-            "unknown mirror method '{value}': pick scrcpy or builtin"
-        ))),
-    }
-}
-
-/// A preset name, lowercased, or an error naming the bad value.
-pub fn normalize_preset(value: &str) -> Result<String> {
-    let v = value.trim().to_lowercase();
-    match v.as_str() {
-        PRESET_PERFORMANCE | PRESET_BALANCED | PRESET_QUALITY => Ok(v),
-        _ => Err(Error(format!(
-            "unknown mirror quality '{value}': pick performance, balanced or quality"
+            "unknown mirror view '{value}': pick stereo or flat"
         ))),
     }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MirrorSettingsConfig {
+    /// Which view to show: stereo or flat. `None` means stereo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub usb_quality: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wifi_quality: Option<String>,
-    /// Restart the mirror by itself when a game or the menu opens.
-    /// `None` means on (the default).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auto_restart: Option<bool>,
-    /// Which mirror to use: scrcpy or builtin. `None` means
-    /// scrcpy (the default).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub method: Option<String>,
-}
-
-/// Auto-restart is on unless the user turned it off.
-pub const DEFAULT_AUTO_RESTART: bool = true;
-
-/// "on" / "off" from the command line, or an error naming the
-/// bad value.
-pub fn normalize_on_off(value: &str) -> Result<bool> {
-    match value.trim().to_lowercase().as_str() {
-        "on" => Ok(true),
-        "off" => Ok(false),
-        _ => Err(Error(format!(
-            "unknown auto-restart '{value}': pick on or off"
-        ))),
-    }
+    pub view: Option<String>,
 }
 
 fn config_path() -> Result<PathBuf> {
@@ -117,70 +74,34 @@ fn write_config(cfg: &MirrorSettingsConfig) -> Result<()> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MirrorSettings {
-    pub usb_quality: String,
-    pub wifi_quality: String,
-    pub auto_restart: bool,
-    pub method: String,
+    pub view: String,
 }
 
 /// The effective settings: the saved choice where there is one,
-/// the old automatic pick where there is not. A saved value the
-/// code no longer recognises falls back to the default instead
-/// of failing, so a bad file never blocks mirroring.
+/// the default where there is not. A saved value the code no
+/// longer recognises falls back to the default instead of
+/// failing, so a bad file never blocks mirroring.
 pub fn get_mirror_settings() -> MirrorSettings {
     let cfg = read_config();
-    let usb = cfg
-        .usb_quality
+    let view = cfg
+        .view
         .as_deref()
-        .and_then(|v| normalize_preset(v).ok())
-        .unwrap_or_else(|| DEFAULT_USB_QUALITY.to_string());
-    let wifi = cfg
-        .wifi_quality
-        .as_deref()
-        .and_then(|v| normalize_preset(v).ok())
-        .unwrap_or_else(|| DEFAULT_WIFI_QUALITY.to_string());
-    let method = cfg
-        .method
-        .as_deref()
-        .and_then(|v| normalize_method(v).ok())
-        .unwrap_or_else(|| DEFAULT_METHOD.to_string());
-    MirrorSettings {
-        usb_quality: usb,
-        wifi_quality: wifi,
-        auto_restart: cfg.auto_restart.unwrap_or(DEFAULT_AUTO_RESTART),
-        method,
-    }
+        .and_then(|v| normalize_view(v).ok())
+        .unwrap_or_else(|| DEFAULT_VIEW.to_string());
+    MirrorSettings { view }
 }
 
-/// Save a new quality for USB and/or Wi-Fi, and/or turn
-/// auto-restart on or off, and/or pick the mirror method.
-/// Anything left out keeps its current value. Returns the
-/// effective settings afterwards.
-pub fn set_mirror_settings(
-    usb_quality: Option<String>,
-    wifi_quality: Option<String>,
-    auto_restart: Option<bool>,
-    method: Option<String>,
-) -> Result<MirrorSettings> {
+/// Save a new view. Returns the effective settings afterwards.
+pub fn set_mirror_settings(view: Option<String>) -> Result<MirrorSettings> {
     let mut cfg = read_config();
-    if let Some(u) = usb_quality {
-        cfg.usb_quality = Some(normalize_preset(&u)?);
-    }
-    if let Some(w) = wifi_quality {
-        cfg.wifi_quality = Some(normalize_preset(&w)?);
-    }
-    if let Some(a) = auto_restart {
-        cfg.auto_restart = Some(a);
-    }
-    if let Some(m) = method {
-        cfg.method = Some(normalize_method(&m)?);
+    if let Some(v) = view {
+        cfg.view = Some(normalize_view(&v)?);
     }
     write_config(&cfg)?;
     Ok(get_mirror_settings())
 }
 
-/// Go back to the old automatic picks (USB Balanced, Wi-Fi
-/// Performance) and auto-restart back on.
+/// Go back to the default view (both eyes).
 pub fn reset_mirror_settings() -> MirrorSettings {
     if let Ok(path) = config_path() {
         let _ = std::fs::remove_file(path);
@@ -193,34 +114,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalize_accepts_all_three_case_insensitively() {
-        assert_eq!(normalize_preset("Performance").unwrap(), "performance");
-        assert_eq!(normalize_preset("BALANCED").unwrap(), "balanced");
-        assert_eq!(normalize_preset(" quality ").unwrap(), "quality");
+    fn normalize_view_accepts_both_case_insensitively() {
+        assert_eq!(normalize_view("Stereo").unwrap(), "stereo");
+        assert_eq!(normalize_view(" FLAT ").unwrap(), "flat");
     }
 
     #[test]
-    fn normalize_refuses_unknown() {
-        assert!(normalize_preset("ultra").is_err());
-        assert!(normalize_preset("").is_err());
+    fn normalize_view_refuses_unknown() {
+        assert!(normalize_view("side-by-side").is_err());
+        assert!(normalize_view("").is_err());
     }
 
     #[test]
-    fn normalize_method_accepts_both_case_insensitively() {
-        assert_eq!(normalize_method("Scrcpy").unwrap(), "scrcpy");
-        assert_eq!(normalize_method("BUILTIN").unwrap(), "builtin");
-    }
-
-    #[test]
-    fn normalize_method_refuses_unknown() {
-        assert!(normalize_method("ffmpeg").is_err());
-        assert!(normalize_method("").is_err());
-    }
-
-    #[test]
-    fn defaults_are_the_old_automatic_picks() {
-        assert_eq!(DEFAULT_USB_QUALITY, "balanced");
-        assert_eq!(DEFAULT_WIFI_QUALITY, "performance");
-        assert_eq!(DEFAULT_METHOD, "scrcpy");
+    fn default_view_is_stereo() {
+        assert_eq!(DEFAULT_VIEW, "stereo");
     }
 }

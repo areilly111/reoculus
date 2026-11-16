@@ -1,14 +1,17 @@
-//! Screenshots, screen recording, logcat and scrcpy mirroring.
+//! Screenshots, screen recording, logcat and the built-in H.264
+//! live mirror.
 //!
 //! Screenshots use `exec-out screencap -p` (binary-safe). Recording
 //! uses `screenrecord` (video-only, max ~180 s per invocation).
-//! Live mirroring is scrcpy as a subprocess; the MVP does NOT
-//! reimplement video streaming.
+//! The live mirror streams raw H.264 from `screenrecord` and the
+//! app decodes it on this device. There is no scrcpy any more
+//! (removed in 0.2.36): the built-in stream is the only mirror.
 
 use crate::error::{Error, Result};
 use crate::transport::{AdbTransport, Target};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::Duration;
 
 pub const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -83,120 +86,23 @@ pub fn logcat_dump(t: &dyn AdbTransport, serial: &str) -> Result<Vec<String>> {
     t.logcat_dump(&Target::serial(serial))
 }
 
-/// Find a scrcpy binary: PATH, then common install locations.
-pub fn find_scrcpy() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("PATH") {
-        for dir in std::env::split_paths(&path) {
-            let cand = dir.join("scrcpy");
-            if cand.exists() {
-                return Some(cand);
-            }
-        }
-    }
-    for cand in [
-        "/usr/bin/scrcpy",
-        "/usr/local/bin/scrcpy",
-        "/snap/bin/scrcpy",
-    ] {
-        let p = PathBuf::from(cand);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        let p = PathBuf::from(home).join(".local").join("bin").join("scrcpy");
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
-}
-
-pub struct Mirror {
-    pub scrcpy: PathBuf,
-    pub command: String,
-    pub note: String,
-}
-
-/// Launch scrcpy in its own window and return immediately. The process
-/// is detached; closing it is done from the scrcpy window itself.
-pub fn mirror(t: &dyn AdbTransport, serial: &str, preset: &str) -> Result<Mirror> {
-    // Presets actually change scrcpy: before this, the UI preset was
-    // ignored and scrcpy ran at full 3664x1920 with no bitrate limit,
-    // which stutters and tears, especially over Wi-Fi.
-    let (max_size, bit_rate, max_fps) = match preset.to_lowercase().as_str() {
-        "performance" => ("1280", "4M", "30"),
-        "quality" => ("2560", "12M", "90"),
-        _ => ("1920", "8M", "60"), // balanced, the default
-    };
-    let scrcpy = find_scrcpy().ok_or_else(|| {
-        Error(
-            "scrcpy is not installed. Install it with `sudo apt install scrcpy` \
-             or from https://github.com/Genymobile/scrcpy/releases, then try again."
-                .into(),
-        )
-    })?;
-    // The serial must be a live device for scrcpy to attach.
-    let devices = t.list_devices().unwrap_or_default();
-    if !devices.iter().any(|d| d.serial == serial) {
-        return Err(Error(format!(
-            "device {serial} is not visible to adb; connect it over USB or Wi-Fi first"
-        )));
-    }
-    // Quest 1 tops out at 72 Hz and its encoder is only verified for
-    // h264 (scrcpy's own default); every other headset gets h265.
-    let codec = if crate::devices::headset_of(t, serial).is_quest1() {
-        "h264"
-    } else {
-        "h265"
-    };
-    let mut cmd = Command::new(&scrcpy);
-    cmd.arg("-s").arg(serial)
-        .arg("--max-size").arg(max_size)
-        .arg("--video-bit-rate").arg(bit_rate)
-        .arg("--max-fps").arg(max_fps)
-        .arg("--video-codec").arg(codec)
-        .arg("--video-codec-options").arg("i-frame-interval=1")
-        .arg("--video-buffer").arg("100")
-        .arg("--no-audio");
-    cmd.stdout(Stdio::null()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| Error(format!("failed to start scrcpy: {e}")))?;
-    // If scrcpy dies immediately (no display, device gone), report its stderr.
-    std::thread::sleep(std::time::Duration::from_millis(900));
-    if let Ok(Some(status)) = child.try_wait() {
-        let mut err = String::new();
-        if let Some(mut stderr) = child.stderr.take() {
-            use std::io::Read;
-            let _ = stderr.read_to_string(&mut err);
-        }
-        return Err(Error(format!(
-            "scrcpy exited immediately (status {status}): {}",
-            err.trim()
-        )));
-    }
-    let _ = child.id(); // detached; the window owns the process now.
-    Ok(Mirror {
-        command: format!("{} -s {} --max-size {} --video-bit-rate {} --max-fps {} --video-codec {} --video-codec-options i-frame-interval=1 --video-buffer 100 --no-audio", scrcpy.display(), serial, max_size, bit_rate, max_fps, codec),
-        scrcpy,
-        note: "scrcpy is running in its own window. Close that window to stop mirroring."
-            .into(),
-    })
-}
-
 /// Stream the headset display as raw H.264 (Annex B) to `out`, for
-/// the Android live view. Runs `screenrecord --output-format=h264 -`
-/// in a loop: screenrecord caps at 180 s per run, and each run starts
+/// the live view. Runs `screenrecord --output-format=h264 -` in a
+/// loop: screenrecord caps at 180 s per run, and each run starts
 /// with SPS/PPS/IDR, so the decoder re-syncs after every restart.
 /// Returns when the reader goes away (the callback stops the stream)
 /// or the transport fails (the headset disconnected). View only, no
 /// input: the tablet shows the headset screen about a second behind.
+/// The bitrate is 4 Mbps: 8 Mbps glitched on the tablet over Wi-Fi
+/// (0.2.36), and 4 Mbps at 1280x720 still looks good while halving
+/// the load on the link and the decoder.
 pub fn mirror_stream(
     t: &dyn AdbTransport,
     serial: &str,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     let target = Target::serial(serial);
-    let cmd = "screenrecord --output-format=h264 --size 1280x720 --bit-rate 8000000 --time-limit 180 -";
+    let cmd = "screenrecord --output-format=h264 --size 1280x720 --bit-rate 4000000 --time-limit 180 -";
     loop {
         let mut stopped = false;
         let code = t.shell_stream(&target, cmd, &mut |chunk| {
@@ -220,64 +126,222 @@ pub fn mirror_stream(
     }
 }
 
-/// PIDs of scrcpy processes mirroring this serial, found by
-/// scanning /proc for a scrcpy command line naming the serial.
-fn scrcpy_pids(serial: &str) -> Result<Vec<i32>> {
-    let mut pids = Vec::new();
-    let proc = std::fs::read_dir("/proc").map_err(|e| Error(format!("cannot list /proc: {e}")))?;
-    for entry in proc.flatten() {
-        let pid: i32 = match entry.file_name().to_string_lossy().parse() {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let cmdline = match std::fs::read(entry.path().join("cmdline")) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let parts: Vec<&str> = cmdline
-            .split(|b| *b == 0)
-            .filter_map(|b| std::str::from_utf8(b).ok())
-            .filter(|s| !s.is_empty())
+/// Long recording loop. Runs `screenrecord` in 180 s segments on the
+/// headset, pulling each finished segment into `dir` and deleting the
+/// remote copy, until the process is killed (the app's Stop button).
+/// Each segment is raw H.264, named
+/// `questcompanion_rec_<unix>_<n>.h264`, so `record_finish` can
+/// stitch them in order by just joining the bytes. Prints one line
+/// per saved segment. Returns only on a transport failure (the
+/// headset disconnected); killing the process is the normal stop.
+pub fn record_loop(t: &dyn AdbTransport, serial: &str, dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(dir).map_err(|e| Error(e.to_string()))?;
+    let target = Target::serial(serial);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut n = 0u32;
+    loop {
+        n += 1;
+        let remote = format!("/sdcard/questcompanion_rec_{stamp}_{n}.h264");
+        let cmd = format!(
+            "screenrecord --output-format=h264 --time-limit 180 --size 1280x720 --bit-rate 6000000 {remote}"
+        );
+        let r = t.shell(&target, &cmd)?;
+        if r.code != 0 && !r.stderr.trim().is_empty() {
+            return Err(Error(format!("screenrecord failed: {}", r.stderr.trim())));
+        }
+        let local = dir.join(format!("questcompanion_rec_{stamp}_{n}.h264"));
+        t.pull(&target, &remote, &local)?;
+        let _ = t.shell(&target, &format!("rm {remote}"));
+        println!("segment {n} saved");
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+    }
+}
+
+/// The (stamp, segment number) parsed out of a segment file name
+/// like `questcompanion_rec_1794444000_2.h264`. Used to order
+/// segments chronologically: a plain name sort puts `_10` before
+/// `_2`, which would stitch the recording out of order.
+fn segment_order(name: &str) -> Option<(u64, u32)> {
+    let base = name.strip_suffix(".h264")?;
+    let rest = base.strip_prefix("questcompanion_rec_")?;
+    let (stamp, n) = rest.rsplit_once('_')?;
+    Some((stamp.parse().ok()?, n.parse().ok()?))
+}
+
+/// The recording segments in `dir`, oldest first.
+fn local_segments(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut segs: Vec<(u64, u32, PathBuf)> = Vec::new();
+    let entries = std::fs::read_dir(dir).map_err(|e| Error(e.to_string()))?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if let Some((stamp, n)) = segment_order(&name) {
+            segs.push((stamp, n, entry.path()));
+        }
+    }
+    segs.sort();
+    Ok(segs.into_iter().map(|(_, _, p)| p).collect())
+}
+
+/// Join the segment files into one raw H.264 file. Every segment
+/// starts with SPS/PPS/IDR, so the joined bytes are one valid
+/// Annex B stream.
+fn stitch(segments: &[PathBuf], out: &Path) -> Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(out).map_err(|e| Error(e.to_string()))?;
+    for seg in segments {
+        let bytes = std::fs::read(seg).map_err(|e| Error(e.to_string()))?;
+        f.write_all(&bytes).map_err(|e| Error(e.to_string()))?;
+    }
+    Ok(())
+}
+
+/// Find an ffmpeg binary on PATH, then the usual locations.
+fn find_ffmpeg() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let cand = dir.join("ffmpeg");
+            if cand.exists() {
+                return Some(cand);
+            }
+        }
+    }
+    for cand in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"] {
+        let p = PathBuf::from(cand);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+pub struct StitchedRecording {
+    pub path: PathBuf,
+    pub segments: usize,
+    /// "mp4" when ffmpeg remuxed it, "h264" when it stayed raw.
+    pub format: String,
+    pub note: Option<String>,
+}
+
+/// Finish a long recording: stop any screenrecord still running on
+/// the headset (the loop was killed mid-segment, so the last piece
+/// is still being written there), pull any segments left on the
+/// device, stitch everything in `dir` into one file, and remux it
+/// to .mp4 with ffmpeg when one is installed. Returns the finished
+/// file. The segment files stay in `dir`; the caller deletes them.
+pub fn record_finish(
+    t: &dyn AdbTransport,
+    serial: &str,
+    dir: &Path,
+    out: &Path,
+) -> Result<StitchedRecording> {
+    let target = Target::serial(serial);
+    // The loop was killed, usually mid-segment: stop the headset
+    // screenrecord so the last piece finalises, then pull it.
+    let _ = t.shell(&target, "pkill -x screenrecord");
+    std::thread::sleep(Duration::from_millis(1000));
+    if let Ok(list) = t.shell(&target, "ls /sdcard/questcompanion_rec_*.h264") {
+        for name in list.stdout.lines().map(str::trim).filter(|s| !s.is_empty()) {
+            let file = name.rsplit('/').next().unwrap_or(name);
+            let local = dir.join(file);
+            if !local.exists() {
+                let _ = t.pull(&target, name, &local);
+            }
+            let _ = t.shell(&target, &format!("rm {name}"));
+        }
+    }
+    let segments = local_segments(dir)?;
+    if segments.is_empty() {
+        return Err(Error("nothing was recorded".into()));
+    }
+    if let Some(parent) = out.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| Error(e.to_string()))?;
+        }
+    }
+    let h264_path = out.with_extension("h264");
+    stitch(&segments, &h264_path)?;
+    if let Some(ffmpeg) = find_ffmpeg() {
+        let ok = Command::new(ffmpeg)
+            .args(["-y", "-v", "error", "-i"])
+            .arg(&h264_path)
+            .args(["-c", "copy"])
+            .arg(out)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            let _ = std::fs::remove_file(&h264_path);
+            return Ok(StitchedRecording {
+                path: out.to_path_buf(),
+                segments: segments.len(),
+                format: "mp4".into(),
+                note: None,
+            });
+        }
+    }
+    Ok(StitchedRecording {
+        path: h264_path,
+        segments: segments.len(),
+        format: "h264".into(),
+        note: Some(
+            "ffmpeg is not installed on this device, so the recording is a raw .h264 file. VLC plays it; on a computer with ffmpeg it can be turned into an .mp4."
+                .into(),
+        ),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn segment_order_parses_stamp_and_number() {
+        assert_eq!(
+            segment_order("questcompanion_rec_1794444000_2.h264"),
+            Some((1794444000, 2))
+        );
+        assert_eq!(segment_order("other.h264"), None);
+        assert_eq!(segment_order("questcompanion_rec_abc_2.h264"), None);
+    }
+
+    #[test]
+    fn local_segments_sort_numerically_not_lexically() {
+        let dir = tempfile::tempdir().unwrap();
+        for n in [2, 10, 1] {
+            std::fs::write(
+                dir.path().join(format!("questcompanion_rec_1794444000_{n}.h264")),
+                [n as u8],
+            )
+            .unwrap();
+        }
+        std::fs::write(dir.path().join("unrelated.txt"), b"x").unwrap();
+        let segs = local_segments(dir.path()).unwrap();
+        let names: Vec<String> = segs
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
-        if parts.is_empty() || !parts[0].ends_with("scrcpy") {
-            continue;
-        }
-        if !parts.iter().any(|a| *a == serial) {
-            continue;
-        }
-        pids.push(pid);
+        assert_eq!(
+            names,
+            vec![
+                "questcompanion_rec_1794444000_1.h264",
+                "questcompanion_rec_1794444000_2.h264",
+                "questcompanion_rec_1794444000_10.h264",
+            ]
+        );
     }
-    Ok(pids)
-}
 
-/// Is a scrcpy mirror running for this serial? Same /proc scan as
-/// the stop, without killing anything.
-pub fn mirror_running(serial: &str) -> bool {
-    scrcpy_pids(serial).map(|p| !p.is_empty()).unwrap_or(false)
-}
-
-/// Stop scrcpy for this serial (SIGTERM, no SIGKILL follow-up).
-/// Returns how many were stopped. This does NOT touch the
-/// auto-restart watcher: the watcher calls this itself when it
-/// restarts the mirror, and stopping the watcher there would
-/// kill the watcher mid-restart.
-pub fn stop_scrcpy(serial: &str) -> Result<usize> {
-    let pids = scrcpy_pids(serial)?;
-    for pid in &pids {
-        unsafe { libc::kill(*pid, libc::SIGTERM) };
+    #[test]
+    fn stitch_joins_segment_bytes_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("questcompanion_rec_1794444000_1.h264"), b"AAA").unwrap();
+        std::fs::write(dir.path().join("questcompanion_rec_1794444000_2.h264"), b"BBB").unwrap();
+        let out = dir.path().join("combined.h264");
+        let segs = local_segments(dir.path()).unwrap();
+        stitch(&segs, &out).unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"AAABBB");
     }
-    if !pids.is_empty() {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-    Ok(pids.len())
-}
-
-/// Stop a running scrcpy mirror for this serial. Also stops the
-/// auto-restart watcher first, so it does not bring the mirror
-/// back a moment later. (The watcher itself stops scrcpy through
-/// `stop_scrcpy`, never through this, or it would kill itself
-/// mid-restart.)
-pub fn mirror_stop(serial: &str) -> Result<usize> {
-    let _ = crate::mirror_watch::stop_watch(serial);
-    stop_scrcpy(serial)
 }
