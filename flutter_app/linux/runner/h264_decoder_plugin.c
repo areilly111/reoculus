@@ -38,6 +38,12 @@ typedef struct {
   GMutex mutex;
 } H264Texture;
 
+// G_DEFINE_TYPE uses the class struct but does not declare it.
+typedef struct _H264TextureClass H264TextureClass;
+struct _H264TextureClass {
+  FlPixelBufferTextureClass parent_class;
+};
+
 G_DEFINE_TYPE(H264Texture, h264_texture, fl_pixel_buffer_texture_get_type())
 
 static gboolean h264_texture_copy_pixels(FlPixelBufferTexture* texture,
