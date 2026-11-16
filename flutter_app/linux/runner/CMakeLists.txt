@@ -26,17 +26,12 @@ add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 
-# H.264 decoder plugin (linux/runner/h264_decoder_plugin.c): link
-# ffmpeg statically, so the AppImage does not need ffmpeg installed
-# on the machine it runs on. The static archives only pull in the
-# objects the decoder actually uses, so this adds a few MB, not the
-# whole of libavcodec. (pkg_check_modules STATIC does not parse on
-# this CMake, so the archive paths are named directly; they live in
-# the ffmpeg -dev packages on the build machine.)
-target_link_libraries(${BINARY_NAME} PRIVATE
-  /usr/lib/x86_64-linux-gnu/libavcodec.a
-  /usr/lib/x86_64-linux-gnu/libavutil.a
-  /usr/lib/x86_64-linux-gnu/libswscale.a
-  m z pthread X11 vdpau)
+# The H.264 decoder plugin (linux/runner/h264_decoder_plugin.c)
+# loads the system ffmpeg libraries at runtime with dlopen (see
+# the comment at the top of that file), so nothing is linked here.
+# Linking ffmpeg statically drags in the whole codec registry, and
+# bundling the shared libraries means shipping ffmpeg's whole
+# dependency closure. The plugin only needs the headers to build,
+# which the ffmpeg -dev packages provide on the build machine.
 
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")

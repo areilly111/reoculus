@@ -1,10 +1,10 @@
 // H.264 decoder plugin for the Linux built-in mirror.
 //
 // The backend streams the headset display as raw H.264 (Annex B)
-// with `device mirror-stream`; this plugin decodes it with
-// libavcodec and shows it in a Flutter texture, so the Mirror
-// screen can show the headset live inside the app window, the
-// same way MediaCodec does it on Android. View only, no input.
+// with `device mirror-stream`; this plugin decodes it and shows it
+// in a Flutter texture, so the Mirror screen can show the headset
+// live inside the app window, the same way MediaCodec does it on
+// Android. View only, no input.
 //
 // Channel "reoculus/h264", same API as the Android decoder:
 //   create  -> int texture id (or an error when no decoder exists)
@@ -14,9 +14,20 @@
 // The stream is fixed at 1280x720 by the backend. Frames at any
 // other size are dropped. Decoding runs on the platform thread:
 // a 720p frame takes a few milliseconds, so the UI stays smooth.
+//
+// The ffmpeg libraries are loaded at runtime with dlopen, not
+// linked. Linking them statically drags in the whole codec
+// registry (options.o references av_codec_iterate, which pulls
+// every codec wrapper and its external library), and bundling the
+// shared libraries means shipping ffmpeg's whole dependency
+// closure. The AppImage therefore needs nothing: on a computer
+// with ffmpeg installed the built-in stream just works, and
+// without it create() fails with a clear message and scrcpy is
+// still there as the default.
 
 #include "h264_decoder_plugin.h"
 
+#include <dlfcn.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
@@ -24,6 +35,110 @@
 
 #define H264_WIDTH 1280
 #define H264_HEIGHT 720
+
+// ---- Runtime ffmpeg -----------------------------------------------------
+// Function pointers resolved from the system libraries at first use.
+
+typedef struct {
+  void* avcodec;
+  void* avutil;
+  void* swscale;
+  const AVCodec* (*find_decoder)(enum AVCodecID);
+  AVCodecContext* (*alloc_context3)(const AVCodec*);
+  int (*open2)(AVCodecContext*, const AVCodec*, AVDictionary**);
+  int (*send_packet)(AVCodecContext*, const AVPacket*);
+  int (*receive_frame)(AVCodecContext*, AVFrame*);
+  void (*free_context)(AVCodecContext**);
+  AVCodecParserContext* (*parser_init)(int);
+  int (*parser_parse2)(AVCodecParserContext*, AVCodecContext*,
+                       uint8_t**, int*, const uint8_t*, int, int64_t,
+                       int64_t, int64_t);
+  void (*parser_close)(AVCodecParserContext*);
+  AVFrame* (*frame_alloc)(void);
+  void (*frame_free)(AVFrame**);
+  void (*frame_unref)(AVFrame*);
+  AVPacket* (*packet_alloc)(void);
+  void (*packet_free)(AVPacket**);
+  int (*new_packet)(AVPacket*, int);
+  struct SwsContext* (*sws_get_context)(int, int, enum AVPixelFormat,
+                                        int, int, enum AVPixelFormat,
+                                        int, SwsFilter*, SwsFilter*,
+                                        const double*);
+  int (*sws_scale)(struct SwsContext*, const uint8_t* const*,
+                   const int*, int, int, uint8_t* const*, const int*);
+  void (*sws_free_context)(struct SwsContext*);
+} FFmpeg;
+
+static FFmpeg g_ff;
+static gboolean g_ff_loaded = FALSE;
+static gboolean g_ff_tried = FALSE;
+
+// The sonames, newest first. The three libraries move together per
+// ffmpeg release (8 = 62/60/9, 7 = 61/59/8, 6 = 60/58/7, 5 = 59/57/6),
+// so each set is tried as a whole before moving to the next.
+static const char* kAvcodecNames[] = {"libavcodec.so.62", "libavcodec.so.61",
+                                      "libavcodec.so.60", "libavcodec.so.59",
+                                      "libavcodec.so", NULL};
+static const char* kAvutilNames[] = {"libavutil.so.60", "libavutil.so.59",
+                                     "libavutil.so.58", "libavutil.so.57",
+                                     "libavutil.so", NULL};
+static const char* kSwscaleNames[] = {"libswscale.so.9", "libswscale.so.8",
+                                      "libswscale.so.7", "libswscale.so.6",
+                                      "libswscale.so", NULL};
+
+static void* ff_open_set(const char** names) {
+  for (int i = 0; names[i] != NULL; i++) {
+    void* handle = dlopen(names[i], RTLD_NOW | RTLD_LOCAL);
+    if (handle != NULL) {
+      return handle;
+    }
+  }
+  return NULL;
+}
+
+static gboolean ff_load(void) {
+  if (g_ff_tried) {
+    return g_ff_loaded;
+  }
+  g_ff_tried = TRUE;
+  g_ff.avcodec = ff_open_set(kAvcodecNames);
+  g_ff.avutil = ff_open_set(kAvutilNames);
+  g_ff.swscale = ff_open_set(kSwscaleNames);
+  if (g_ff.avcodec == NULL || g_ff.avutil == NULL || g_ff.swscale == NULL) {
+    return FALSE;
+  }
+  g_ff.find_decoder = dlsym(g_ff.avcodec, "avcodec_find_decoder");
+  g_ff.alloc_context3 = dlsym(g_ff.avcodec, "avcodec_alloc_context3");
+  g_ff.open2 = dlsym(g_ff.avcodec, "avcodec_open2");
+  g_ff.send_packet = dlsym(g_ff.avcodec, "avcodec_send_packet");
+  g_ff.receive_frame = dlsym(g_ff.avcodec, "avcodec_receive_frame");
+  g_ff.free_context = dlsym(g_ff.avcodec, "avcodec_free_context");
+  g_ff.parser_init = dlsym(g_ff.avcodec, "av_parser_init");
+  g_ff.parser_parse2 = dlsym(g_ff.avcodec, "av_parser_parse2");
+  g_ff.parser_close = dlsym(g_ff.avcodec, "av_parser_close");
+  g_ff.frame_alloc = dlsym(g_ff.avutil, "av_frame_alloc");
+  g_ff.frame_free = dlsym(g_ff.avutil, "av_frame_free");
+  g_ff.frame_unref = dlsym(g_ff.avutil, "av_frame_unref");
+  g_ff.packet_alloc = dlsym(g_ff.avcodec, "av_packet_alloc");
+  g_ff.packet_free = dlsym(g_ff.avcodec, "av_packet_free");
+  g_ff.new_packet = dlsym(g_ff.avcodec, "av_new_packet");
+  g_ff.sws_get_context = dlsym(g_ff.swscale, "sws_getContext");
+  g_ff.sws_scale = dlsym(g_ff.swscale, "sws_scale");
+  g_ff.sws_free_context = dlsym(g_ff.swscale, "sws_freeContext");
+  if (g_ff.find_decoder == NULL || g_ff.alloc_context3 == NULL ||
+      g_ff.open2 == NULL || g_ff.send_packet == NULL ||
+      g_ff.receive_frame == NULL || g_ff.free_context == NULL ||
+      g_ff.parser_init == NULL || g_ff.parser_parse2 == NULL ||
+      g_ff.parser_close == NULL || g_ff.frame_alloc == NULL ||
+      g_ff.frame_free == NULL || g_ff.frame_unref == NULL ||
+      g_ff.packet_alloc == NULL || g_ff.packet_free == NULL ||
+      g_ff.new_packet == NULL || g_ff.sws_get_context == NULL ||
+      g_ff.sws_scale == NULL || g_ff.sws_free_context == NULL) {
+    return FALSE;
+  }
+  g_ff_loaded = TRUE;
+  return TRUE;
+}
 
 // ---- Texture ------------------------------------------------------------
 // A pixel-buffer texture holding two RGBA frames. The decoder writes
@@ -110,44 +225,45 @@ static void h264_decoder_close(H264Decoder* dec) {
   }
   g_clear_object(&dec->texture);
   if (dec->sws != NULL) {
-    sws_freeContext(dec->sws);
+    g_ff.sws_free_context(dec->sws);
     dec->sws = NULL;
   }
   dec->sws_format = -1;
   if (dec->frame != NULL) {
-    av_frame_free(&dec->frame);
+    g_ff.frame_free(&dec->frame);
   }
   if (dec->parser != NULL) {
-    av_parser_close(dec->parser);
+    g_ff.parser_close(dec->parser);
     dec->parser = NULL;
   }
   if (dec->codec_ctx != NULL) {
-    avcodec_free_context(&dec->codec_ctx);
+    g_ff.free_context(&dec->codec_ctx);
   }
 }
 
 static gboolean h264_decoder_open(H264Decoder* dec, GError** error) {
-  // The H.264 decoder, referenced directly instead of through
-  // avcodec_find_decoder. The lookup goes through the codec
-  // registry, and linking the registry statically drags in every
-  // codec wrapper in libavcodec, each needing its external library
-  // (libvpx, libaom, libdav1d, and a dozen more). Referencing the
-  // decoder directly links only it and its own dependencies, so
-  // the AppImage stays small and needs no ffmpeg installed. The
-  // symbol is a stable part of libavcodec; if a future ffmpeg
-  // drops it, the link fails loudly instead of silently.
-  extern const AVCodec ff_h264_decoder;
-  const AVCodec* codec = &ff_h264_decoder;
-  dec->parser = av_parser_init(AV_CODEC_ID_H264);
-  dec->codec_ctx = avcodec_alloc_context3(codec);
+  if (!ff_load()) {
+    g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                "This computer does not have the ffmpeg video libraries "
+                "installed. Install ffmpeg, or use scrcpy instead.");
+    return FALSE;
+  }
+  const AVCodec* codec = g_ff.find_decoder(AV_CODEC_ID_H264);
+  if (codec == NULL) {
+    g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                "No H.264 decoder found on this computer");
+    return FALSE;
+  }
+  dec->parser = g_ff.parser_init(AV_CODEC_ID_H264);
+  dec->codec_ctx = g_ff.alloc_context3(codec);
   if (dec->parser == NULL || dec->codec_ctx == NULL ||
-      avcodec_open2(dec->codec_ctx, codec, NULL) < 0) {
+      g_ff.open2(dec->codec_ctx, codec, NULL) < 0) {
     g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                 "Could not open the H.264 decoder");
     h264_decoder_close(dec);
     return FALSE;
   }
-  dec->frame = av_frame_alloc();
+  dec->frame = g_ff.frame_alloc();
   if (dec->frame == NULL) {
     g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                 "Could not allocate a video frame");
@@ -179,7 +295,7 @@ static void h264_decoder_feed(H264Decoder* dec, const uint8_t* data,
   while (offset < size) {
     uint8_t* pkt_data = NULL;
     int pkt_size = 0;
-    int consumed = av_parser_parse2(dec->parser, dec->codec_ctx,
+    int consumed = g_ff.parser_parse2(dec->parser, dec->codec_ctx,
                                     &pkt_data, &pkt_size,
                                     data + offset,
                                     (int)(size - offset),
@@ -191,33 +307,33 @@ static void h264_decoder_feed(H264Decoder* dec, const uint8_t* data,
     if (pkt_size == 0) {
       continue;
     }
-    AVPacket* pkt = av_packet_alloc();
+    AVPacket* pkt = g_ff.packet_alloc();
     if (pkt == NULL) {
       break;
     }
     // The parser owns pkt_data, so copy it: the packet frees its
     // own data when it is released.
-    if (av_new_packet(pkt, pkt_size) < 0) {
-      av_packet_free(&pkt);
+    if (g_ff.new_packet(pkt, pkt_size) < 0) {
+      g_ff.packet_free(&pkt);
       break;
     }
     memcpy(pkt->data, pkt_data, (size_t)pkt_size);
-    if (avcodec_send_packet(dec->codec_ctx, pkt) < 0) {
-      av_packet_free(&pkt);
+    if (g_ff.send_packet(dec->codec_ctx, pkt) < 0) {
+      g_ff.packet_free(&pkt);
       continue;
     }
-    av_packet_free(&pkt);
-    while (avcodec_receive_frame(dec->codec_ctx, dec->frame) == 0) {
+    g_ff.packet_free(&pkt);
+    while (g_ff.receive_frame(dec->codec_ctx, dec->frame) == 0) {
       if (dec->frame->width != H264_WIDTH ||
           dec->frame->height != H264_HEIGHT) {
-        av_frame_unref(dec->frame);
+        g_ff.frame_unref(dec->frame);
         continue;
       }
       if (dec->sws == NULL || dec->sws_format != dec->frame->format) {
         if (dec->sws != NULL) {
-          sws_freeContext(dec->sws);
+          g_ff.sws_free_context(dec->sws);
         }
-        dec->sws = sws_getContext(H264_WIDTH, H264_HEIGHT,
+        dec->sws = g_ff.sws_get_context(H264_WIDTH, H264_HEIGHT,
                                   (enum AVPixelFormat)dec->frame->format,
                                   H264_WIDTH, H264_HEIGHT,
                                   AV_PIX_FMT_RGBA, SWS_BILINEAR,
@@ -227,14 +343,14 @@ static void h264_decoder_feed(H264Decoder* dec, const uint8_t* data,
       if (dec->sws != NULL) {
         uint8_t* dst[4] = {dec->texture->back, NULL, NULL, NULL};
         int stride[4] = {H264_WIDTH * 4, 0, 0, 0};
-        sws_scale(dec->sws,
+        g_ff.sws_scale(dec->sws,
                   (const uint8_t* const*)dec->frame->data,
                   dec->frame->linesize, 0, H264_HEIGHT, dst, stride);
         h264_texture_swap(dec->texture);
         fl_texture_registrar_mark_texture_frame_available(
             dec->registrar, FL_TEXTURE(dec->texture));
       }
-      av_frame_unref(dec->frame);
+      g_ff.frame_unref(dec->frame);
     }
   }
 }
