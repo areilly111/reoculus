@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME}
   "main.cc"
   "my_application.cc"
+  "h264_decoder_plugin.c"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
 )
 
@@ -22,5 +23,14 @@ add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
+
+# H.264 decoder plugin (linux/runner/h264_decoder_plugin.c): link
+# ffmpeg statically, so the AppImage does not need ffmpeg installed
+# on the machine it runs on. The static archives only pull in the
+# objects the decoder actually uses, so this adds a few MB, not the
+# whole of libavcodec.
+pkg_check_modules(FFMPEG REQUIRED STATIC libavcodec libavutil libswscale)
+target_include_directories(${BINARY_NAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
+target_link_libraries(${BINARY_NAME} PRIVATE ${FFMPEG_STATIC_LIBRARIES} m z pthread)
 
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")

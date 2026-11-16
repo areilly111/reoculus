@@ -2,14 +2,15 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 
-/// Live H.264 mirror on Android: spawns questctl `device
-/// mirror-stream` and feeds its raw output into the platform video
-/// decoder (MediaCodec), which renders into a Flutter texture.
+/// Live H.264 mirror: spawns questctl `device mirror-stream` and
+/// feeds its raw output into the platform video decoder (MediaCodec
+/// on Android, libavcodec on Linux), which renders into a Flutter
+/// texture.
 ///
 /// View only, no input. The picture runs about a second behind the
 /// headset, and screenrecord restarts itself every 3 minutes, so
-/// there is a brief black gap at each restart. Linux does not use
-/// this: it has scrcpy.
+/// there is a brief black gap at each restart. On Linux this is the
+/// built-in alternative to scrcpy, picked on the Mirror screen.
 class H264Mirror {
   static const _channel = MethodChannel('reoculus/h264');
 

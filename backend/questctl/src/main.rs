@@ -362,7 +362,8 @@ enum MirrorSettingsCmd {
     Get,
     /// Pick the mirror quality for USB and/or Wi-Fi
     /// (performance, balanced or quality), and/or turn
-    /// auto-restart on or off.
+    /// auto-restart on or off, and/or pick the mirror method
+    /// (scrcpy or builtin).
     Set {
         #[arg(long)]
         usb: Option<String>,
@@ -370,6 +371,8 @@ enum MirrorSettingsCmd {
         wifi: Option<String>,
         #[arg(long)]
         auto_restart: Option<String>,
+        #[arg(long)]
+        method: Option<String>,
     },
     /// Go back to the defaults (USB Balanced, Wi-Fi Performance).
     Reset,
@@ -1406,13 +1409,13 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
             MirrorSettingsCmd::Get => {
                 Ok(serde_json::to_value(mirror_settings::get_mirror_settings())?)
             }
-            MirrorSettingsCmd::Set { usb, wifi, auto_restart } => {
+            MirrorSettingsCmd::Set { usb, wifi, auto_restart, method } => {
                 let auto = match auto_restart {
                     Some(v) => Some(mirror_settings::normalize_on_off(v)?),
                     None => None,
                 };
                 Ok(serde_json::to_value(
-                    mirror_settings::set_mirror_settings(usb.clone(), wifi.clone(), auto)?,
+                    mirror_settings::set_mirror_settings(usb.clone(), wifi.clone(), auto, method.clone())?,
                 )?)
             }            MirrorSettingsCmd::Reset => Ok(serde_json::to_value(
                 mirror_settings::reset_mirror_settings(),

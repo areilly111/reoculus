@@ -942,16 +942,19 @@ class PathsInfo {
       );
 }
 
-/// Saved mirror quality for USB and Wi-Fi, and whether the mirror
-/// auto-restarts.
+/// Saved mirror quality for USB and Wi-Fi, whether the mirror
+/// auto-restarts, and which mirror to use: scrcpy in its own
+/// window, or the built-in H.264 stream inside the app.
 class MirrorSettings {
   final String usbQuality, wifiQuality;
   final bool autoRestart;
-  const MirrorSettings({required this.usbQuality, required this.wifiQuality, this.autoRestart = true});
+  final String method;
+  const MirrorSettings({required this.usbQuality, required this.wifiQuality, this.autoRestart = true, this.method = 'scrcpy'});
   factory MirrorSettings.fromJson(Map<String, dynamic> j) => MirrorSettings(
         usbQuality: (j['usb_quality'] ?? 'balanced').toString(),
         wifiQuality: (j['wifi_quality'] ?? 'performance').toString(),
         autoRestart: j['auto_restart'] != false,
+        method: (j['method'] ?? 'scrcpy').toString(),
       );
 }
 

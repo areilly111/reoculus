@@ -73,7 +73,7 @@ flutter run -d linux
 
 ### The Android APK (phone-as-host companion, Wi-Fi first)
 
-Version 0.2.34 ships as `ReOculus-Android-0.2.34.apk`
+Version 0.2.35 ships as `ReOculus-Android-0.2.35.apk`
 (signed with the persistent ReOculus keystore in
 `android/keystore/`, so future updates install over it).
 On your phone:

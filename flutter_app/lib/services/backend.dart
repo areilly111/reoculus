@@ -262,7 +262,7 @@ abstract class BackendService {
   Future<MirrorSettings?> mirrorSettings();
   /// Save mirror quality and auto-restart. Only the values passed
   /// in change.
-  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart});
+  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart, String? method});
   /// Put the mirror settings back to their defaults.
   Future<MirrorSettings?> resetMirrorSettings();
   /// Start the mirror watcher: it restarts scrcpy whenever the
@@ -1123,11 +1123,12 @@ class RealBackend implements BackendService {
   }
 
   @override
-  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart}) async {
+  Future<MirrorSettings?> setMirrorSettings({String? usbQuality, String? wifiQuality, bool? autoRestart, String? method}) async {
     final args = ['mirror-settings', 'set'];
     if (usbQuality != null) args.addAll(['--usb', usbQuality]);
     if (wifiQuality != null) args.addAll(['--wifi', wifiQuality]);
     if (autoRestart != null) args.addAll(['--auto-restart', autoRestart ? 'on' : 'off']);
+    if (method != null) args.addAll(['--method', method]);
     final j = await _run(args);
     if (j['ok'] != true) return null;
     return MirrorSettings.fromJson(j);

@@ -1,11 +1,14 @@
-//! Mirror quality settings, one preset per connection type.
-//!
-//! The mirror used to pick its own quality (USB = Balanced,
-//! Wi-Fi = Performance) with no setting to change. Now the user
-//! can pick each one. The choice is kept in
-//! `~/.config/quest-companion/mirror.json` and read by the app
-//! when it starts a mirror. The defaults are the old automatic
-//! picks, so nothing changes until the user changes it.
+/// Mirror quality settings, one preset per connection type, plus
+/// which mirror to use: scrcpy in its own window, or the built-in
+/// H.264 stream shown inside the app (the same stream the Android
+/// app uses, decoded on this computer).
+///
+/// The mirror used to pick its own quality (USB = Balanced,
+/// Wi-Fi = Performance) with no setting to change. Now the user
+/// can pick each one. The choice is kept in
+/// `~/.config/quest-companion/mirror.json` and read by the app
+/// when it starts a mirror. The defaults are the old automatic
+/// picks, so nothing changes until the user changes it.
 
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
@@ -15,9 +18,28 @@ pub const PRESET_PERFORMANCE: &str = "performance";
 pub const PRESET_BALANCED: &str = "balanced";
 pub const PRESET_QUALITY: &str = "quality";
 
+/// scrcpy in its own window (the original mirror, low latency).
+pub const METHOD_SCRCPY: &str = "scrcpy";
+/// The built-in H.264 stream, decoded in the app window.
+pub const METHOD_BUILTIN: &str = "builtin";
+
 /// The old automatic picks, kept as the defaults.
 pub const DEFAULT_USB_QUALITY: &str = PRESET_BALANCED;
 pub const DEFAULT_WIFI_QUALITY: &str = PRESET_PERFORMANCE;
+/// scrcpy stays the default: it is 35 to 70 ms behind, the
+/// built-in stream is about a second behind.
+pub const DEFAULT_METHOD: &str = METHOD_SCRCPY;
+
+/// A mirror method name, lowercased, or an error naming the bad value.
+pub fn normalize_method(value: &str) -> Result<String> {
+    let v = value.trim().to_lowercase();
+    match v.as_str() {
+        METHOD_SCRCPY | METHOD_BUILTIN => Ok(v),
+        _ => Err(Error(format!(
+            "unknown mirror method '{value}': pick scrcpy or builtin"
+        ))),
+    }
+}
 
 /// A preset name, lowercased, or an error naming the bad value.
 pub fn normalize_preset(value: &str) -> Result<String> {
@@ -40,6 +62,10 @@ pub struct MirrorSettingsConfig {
     /// `None` means on (the default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_restart: Option<bool>,
+    /// Which mirror to use: scrcpy or builtin. `None` means
+    /// scrcpy (the default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
 }
 
 /// Auto-restart is on unless the user turned it off.
@@ -94,6 +120,7 @@ pub struct MirrorSettings {
     pub usb_quality: String,
     pub wifi_quality: String,
     pub auto_restart: bool,
+    pub method: String,
 }
 
 /// The effective settings: the saved choice where there is one,
@@ -112,20 +139,28 @@ pub fn get_mirror_settings() -> MirrorSettings {
         .as_deref()
         .and_then(|v| normalize_preset(v).ok())
         .unwrap_or_else(|| DEFAULT_WIFI_QUALITY.to_string());
+    let method = cfg
+        .method
+        .as_deref()
+        .and_then(|v| normalize_method(v).ok())
+        .unwrap_or_else(|| DEFAULT_METHOD.to_string());
     MirrorSettings {
         usb_quality: usb,
         wifi_quality: wifi,
         auto_restart: cfg.auto_restart.unwrap_or(DEFAULT_AUTO_RESTART),
+        method,
     }
 }
 
 /// Save a new quality for USB and/or Wi-Fi, and/or turn
-/// auto-restart on or off. Anything left out keeps its current
-/// value. Returns the effective settings afterwards.
+/// auto-restart on or off, and/or pick the mirror method.
+/// Anything left out keeps its current value. Returns the
+/// effective settings afterwards.
 pub fn set_mirror_settings(
     usb_quality: Option<String>,
     wifi_quality: Option<String>,
     auto_restart: Option<bool>,
+    method: Option<String>,
 ) -> Result<MirrorSettings> {
     let mut cfg = read_config();
     if let Some(u) = usb_quality {
@@ -136,6 +171,9 @@ pub fn set_mirror_settings(
     }
     if let Some(a) = auto_restart {
         cfg.auto_restart = Some(a);
+    }
+    if let Some(m) = method {
+        cfg.method = Some(normalize_method(&m)?);
     }
     write_config(&cfg)?;
     Ok(get_mirror_settings())
@@ -168,8 +206,21 @@ mod tests {
     }
 
     #[test]
+    fn normalize_method_accepts_both_case_insensitively() {
+        assert_eq!(normalize_method("Scrcpy").unwrap(), "scrcpy");
+        assert_eq!(normalize_method("BUILTIN").unwrap(), "builtin");
+    }
+
+    #[test]
+    fn normalize_method_refuses_unknown() {
+        assert!(normalize_method("ffmpeg").is_err());
+        assert!(normalize_method("").is_err());
+    }
+
+    #[test]
     fn defaults_are_the_old_automatic_picks() {
         assert_eq!(DEFAULT_USB_QUALITY, "balanced");
         assert_eq!(DEFAULT_WIFI_QUALITY, "performance");
+        assert_eq!(DEFAULT_METHOD, "scrcpy");
     }
 }
