@@ -127,12 +127,17 @@ static void h264_decoder_close(H264Decoder* dec) {
 }
 
 static gboolean h264_decoder_open(H264Decoder* dec, GError** error) {
-  const AVCodec* codec = avcodec_find_decoder(AV_CODEC_ID_H264);
-  if (codec == NULL) {
-    g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                "No H.264 decoder found on this computer");
-    return FALSE;
-  }
+  // The H.264 decoder, referenced directly instead of through
+  // avcodec_find_decoder. The lookup goes through the codec
+  // registry, and linking the registry statically drags in every
+  // codec wrapper in libavcodec, each needing its external library
+  // (libvpx, libaom, libdav1d, and a dozen more). Referencing the
+  // decoder directly links only it and its own dependencies, so
+  // the AppImage stays small and needs no ffmpeg installed. The
+  // symbol is a stable part of libavcodec; if a future ffmpeg
+  // drops it, the link fails loudly instead of silently.
+  extern const AVCodec ff_h264_decoder;
+  const AVCodec* codec = &ff_h264_decoder;
   dec->parser = av_parser_init(AV_CODEC_ID_H264);
   dec->codec_ctx = avcodec_alloc_context3(codec);
   if (dec->parser == NULL || dec->codec_ctx == NULL ||
