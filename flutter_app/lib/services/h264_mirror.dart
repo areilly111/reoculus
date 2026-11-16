@@ -14,14 +14,22 @@ import 'package:flutter/services.dart';
 /// The feed is paced on Android only, not fired per chunk: adb
 /// delivers the stream in bursts over Wi-Fi, and handing every
 /// burst straight to the decoder made the tablet picture glitch.
-/// Incoming chunks queue up and one goes to the decoder every 33 ms,
-/// about 30 a second, which smooths the bursts out. That adds a
-/// little latency, on top of the second the stream already has. The
-/// queue is capped at 90 chunks (about 3 seconds): past that the
-/// oldest chunk is dropped, so a slow decoder can never fall minutes
-/// behind. On Linux the chunks go straight to the decoder as they
-/// arrive: the PC live view was already perfect that way and is
-/// left alone.
+/// Incoming chunks queue up and the queue is drained on a steady
+/// 33 ms tick, about 30 times a second, which smooths the bursts
+/// out. That adds a little latency, on top of the second the stream
+/// already has. The queue is capped at 90 chunks (about 3 seconds):
+/// past that the oldest chunk is dropped, so a slow decoder can
+/// never fall minutes behind. On Linux the chunks go straight to
+/// the decoder as they arrive: the PC live view was already perfect
+/// that way and is left alone.
+///
+/// The drain matters: the tick used to feed only one chunk, but
+/// adb delivers small chunks, so at 4 Mbps more chunks arrive per
+/// second than one per tick can drain. The queue filled and dropped
+/// the oldest bytes, keyframes included, which left the tablet
+/// picture blocky until the next keyframe. Draining the whole queue
+/// each tick feeds everything that arrived, so nothing is dropped
+/// by the feed itself.
 class H264Mirror {
   static const _channel = MethodChannel('reoculus/h264');
 
@@ -106,7 +114,7 @@ class H264Mirror {
         unawaited(_feedDirect(bytes));
       }
     });
-    if (_paced) _timer = Timer.periodic(_tick, (_) => _feedOne());
+    if (_paced) _timer = Timer.periodic(_tick, (_) => _feedQueued());
     proc.stderr.listen((chunk) {
       _stderr.write(String.fromCharCodes(chunk));
     });
@@ -123,16 +131,26 @@ class H264Mirror {
     return _textureId;
   }
 
-  /// Feed the oldest queued chunk to the decoder. Skips the tick
-  /// while a feed is still in flight, so feeds never overlap.
-  Future<void> _feedOne() async {
+  /// Drain the whole queue to the decoder. Skips the tick while a
+  /// drain is still in flight, so drains never overlap. Feeding
+  /// everything that arrived (instead of one chunk per tick) is
+  /// what keeps the tablet picture from going blocky: at 4 Mbps
+  /// more small chunks arrive per second than one per tick can
+  /// drain, and the queue used to fill and drop the oldest bytes,
+  /// keyframes included.
+  Future<void> _feedQueued() async {
     if (_feeding || _queue.isEmpty || _textureId == null) return;
     _feeding = true;
-    final chunk = _queue.removeAt(0);
     try {
-      await _channel.invokeMethod('feed', chunk);
-    } catch (_) {}
-    _feeding = false;
+      while (_queue.isNotEmpty && _textureId != null) {
+        final chunk = _queue.removeAt(0);
+        try {
+          await _channel.invokeMethod('feed', chunk);
+        } catch (_) {}
+      }
+    } finally {
+      _feeding = false;
+    }
   }
 
   /// Feed one chunk straight to the decoder (Linux path: the PC
