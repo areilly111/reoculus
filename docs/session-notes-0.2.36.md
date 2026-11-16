@@ -1,7 +1,9 @@
 # Session notes: ReOculus 0.2.36 (2026-11-15)
 
 Handoff for the next agent picking up ReOculus. This covers what was built,
-fixed, and diagnosed in this session, and what is still open. The user
+fixed, and diagnosed in this session, and what is still open. For how to
+build the app and apply a fix, read `docs/BUILDING.md` (it is the build
+and fix guide; this file is the session log). The user
 (Anthony) tests on his own hardware and his verdict is the only thing that
 closes a request. State work as built and awaiting his test, never fixed,
 until he confirms it.
@@ -262,6 +264,19 @@ so the problem is how the app sets up and feeds the decoder.
 - PARKED, do not reopen without his word: ReOculus Home launcher, Beat
   Saber mods, real store + sideloaded-app update check, runtime from
   scratch / WiVRn fork. No RiftLinux in ReOculus at all (his ruling).
+
+## Waking the Quest from sleep (verified 2026-11-16, main chat)
+
+- The Quest 2 can be woken from sleep over USB adb AND over Wi-Fi adb, both
+  tested live on his headset. Wi-Fi stays alive while it sleeps, so the
+  Wi-Fi adb connection still answers.
+- Command, either transport: `adb shell input keyevent 26` (power key
+  toggle). Verified: `mWakefulness=Asleep` went to `Awake` on USB, then
+  put back to sleep and woken again over Wi-Fi to 192.168.100.112:5555.
+- Check state with: `adb shell dumpsys power | grep mWakefulness`.
+- His Quest 2 USB serial is 1WMHHB630X1464, Wi-Fi adb is
+  192.168.100.112:5555. (Tablet is 192.168.100.132, his S23 Ultra is
+  192.168.100.199, do not mix them up.)
 
 ## Rules that govern this repo (do not break them)
 
