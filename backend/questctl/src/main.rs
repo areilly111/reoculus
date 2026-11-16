@@ -4,8 +4,9 @@
 //! and prints ONE JSON object to stdout:
 //!   `{"ok": true, ...data}` on success,
 //!   `{"ok": false, "error": "..."}` on failure (exit code non-zero).
-//! The single documented exception is `device logcat --follow`, which
-//! streams raw logcat lines until killed.
+//! The documented exceptions are `device logcat --follow`, which
+//! streams raw logcat lines until killed, and `device mirror-stream`,
+//! which streams raw H.264 to stdout until killed.
 
 use clap::{Args, Parser, Subcommand};
 use quest_core::transport::{make_transport, resolve_adb_path, Target, TransportKind};
@@ -1023,6 +1024,12 @@ enum DeviceCmd {
         #[arg(long, default_value = "balanced")]
         preset: String,
     },
+    /// Stream the headset display as raw H.264 (Annex B) to stdout,
+    /// for the Android live view. Runs until killed (no JSON envelope).
+    MirrorStream {
+        #[arg(long)]
+        serial: String,
+    },
     /// Watch the foreground activity and restart the mirror when
     /// it changes (a game or the menu opens). Spawns the watcher
     /// detached; stopping the mirror stops it.
@@ -1792,6 +1799,11 @@ fn run(cli: &Cli) -> quest_core::Result<Value> {
                 let m = media::mirror(t.as_ref(), serial, preset)?;
                 Ok(json!({ "launched": true, "command": m.command, "note": m.note }))
             }
+            DeviceCmd::MirrorStream { .. } => {
+                // Handled in main() before run(): it streams raw H.264,
+                // not JSON, so this arm is never reached.
+                unreachable!("device mirror-stream is handled in main()")
+            }
             DeviceCmd::MirrorWatchStart { serial, preset, connection } => {
                 let s = mirror_watch::start_watch(serial, preset, connection)?;
                 Ok(serde_json::to_value(s)?)
@@ -1927,18 +1939,48 @@ fn logcat_follow(serial: &str) -> ExitCode {
     }
 }
 
+/// `device mirror-stream` writes raw H.264 to stdout until killed.
+fn mirror_stream(cli: &Cli, serial: &str) -> ExitCode {
+    let kind = match TransportKind::from_str(&cli.transport) {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(1);
+        }
+    };
+    let t = match make_transport(&kind) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(1);
+        }
+    };
+    let mut out = std::io::stdout().lock();
+    match media::mirror_stream(t.as_ref(), serial, &mut out) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::from(1)
+        }
+    }
+}
+
 /// Entry point: parse the CLI, run the command as JSON, and print
 /// `{"ok": true, ...}` or `{"ok": false, "error": "..."}`. `logcat
-/// --follow` is the one exception: it streams raw log lines instead
-/// of JSON.
+/// --follow` and `device mirror-stream` are the exceptions: they
+/// stream raw bytes instead of JSON.
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    // Follow mode is the only non-JSON path, by design (see CONTRACT.md).
+    // Follow mode and mirror-stream are the non-JSON paths, by
+    // design (see CONTRACT.md).
     if let Commands::Device(a) = &cli.cmd {
         if let DeviceCmd::Logcat { serial, follow } = &a.cmd {
             if *follow {
                 return logcat_follow(serial);
             }
+        }
+        if let DeviceCmd::MirrorStream { serial } = &a.cmd {
+            return mirror_stream(&cli, serial);
         }
     }
     match run(&cli) {

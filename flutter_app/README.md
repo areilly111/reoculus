@@ -73,9 +73,10 @@ flutter run -d linux
 
 ### The Android APK (phone-as-host companion, Wi-Fi first)
 
-Version 0.2.33 ships as `ReOculus-Android-0.2.33.apk`
-(debug-signed, fine for sideload; no persistent release keystore
-was created). On your phone:
+Version 0.2.34 ships as `ReOculus-Android-0.2.34.apk`
+(signed with the persistent ReOculus keystore in
+`android/keystore/`, so future updates install over it).
+On your phone:
 
 1. Copy the APK to the phone (USB, or any file transfer you trust).
 2. Tap it to install. Android will ask you to allow installs from
@@ -93,19 +94,24 @@ was created). On your phone:
    phone app, and installing test builds on the headset needs
    the owner's say-so each time.
 
-**What works on Android in 0.2.33 vs desktop-only:** the app bundles
+**What works on Android in 0.2.34 vs desktop-only:** the app bundles
 the questctl Rust binary built for Android aarch64
 (`backend/scripts/build-android.sh`, copied to
 `assets/questctl-android-arm64` before `flutter build apk`) and
 runs it with the libadb DirectTransport over Wi-Fi, so the same
 shell-based headset features work from a phone: Home (Headsets), Apps,
 Files, Device and Settings, Logs, Terminal, backup/restore/library/
-gallery, the headset config file, and custom headset names. PC VR
+gallery, the headset config file, and custom headset names. Mirror
+works on Android too now, as a live view: questctl streams the
+headset display as raw H.264 (`device mirror-stream`, screenrecord
+over the direct transport) and the app decodes it on the device with
+MediaCodec into a Flutter texture. It is view only, about a second
+behind, and restarts itself every 3 minutes (screenrecord's cap), so
+there is a brief black gap at each restart. PC VR
 and WiVRn are hidden on Android: no phone can host VR streaming
 for a Quest (the research in
 `research_notes/phone-to-quest-vr-streaming-20261113/` found no
-shipping phone-as-host streamer). Mirror needs scrcpy, which does
-not exist on a phone, so it shows an honest error. Features that
+shipping phone-as-host streamer). Features that
 need adb push/pull/install return the backend's clear "not
 implemented on the direct transport" error instead of silently
 failing; discovery (listing attached devices) does not exist on the

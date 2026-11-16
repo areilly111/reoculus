@@ -1,7 +1,8 @@
 // Device, Mirror, Logs, and Setup screens.
 // Device and Settings: safe, dangerous, and rooted headset settings,
 // backups, snapshots, home launchers, and headset health. Mirror: the
-// scrcpy screen mirror with quality and recording. Logs: app logs,
+// scrcpy screen mirror on Linux, the H.264 live view on Android, with
+// quality and recording. Logs: app logs,
 // headset logcat, terminal, and debug info. Setup: first-run checklist,
 // storage locations, and the Support Countdown.
 import 'dart:io';
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
 import '../services/app_state.dart';
+import '../services/h264_mirror.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'singularity_wizard.dart';
@@ -1238,8 +1240,8 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
 }
 
 // ---- Mirror / Streaming ---------------------------------------------------
-/// Mirror screen: live headset screen via scrcpy, quality presets,
-/// recording, and screenshots.
+/// Mirror screen: live headset screen (scrcpy on Linux, H.264 live
+/// view on Android), quality presets, recording, and screenshots.
 class MirrorScreen extends StatefulWidget {
   final AppState state;
   const MirrorScreen({required this.state, super.key});
@@ -1252,6 +1254,18 @@ class _MirrorScreenState extends State<MirrorScreen> {
   bool _recording = false;
   String? _lastSaved;
   MirrorSettings _quality = const MirrorSettings(usbQuality: 'balanced', wifiQuality: 'performance');
+  // Android live view: the headset display streamed as H.264 and
+  // decoded on this device. Linux uses scrcpy instead.
+  final _stream = H264Mirror();
+  bool _streaming = false;
+  int? _streamTextureId;
+  String? _streamError;
+
+  @override
+  void dispose() {
+    _stream.stop();
+    super.dispose();
+  }
 
   @override
   /// Loads the saved mirror quality when the screen opens.
@@ -1378,6 +1392,95 @@ class _MirrorScreenState extends State<MirrorScreen> {
     await _mirror();
   }
 
+  /// Start the Android live view: spawn the backend H.264 stream and
+  /// feed it to the on-device video decoder. The picture runs about a
+  /// second behind the headset.
+  Future<void> _startAndroidMirror() async {
+    final serial = widget.state.selectedDevice?.serial;
+    if (serial == null) return;
+    setState(() {
+      _streamError = null;
+      _streaming = true;
+    });
+    final id = await _stream.start(
+      cliPath: widget.state.backend.cliPath,
+      directAddr: widget.state.backend.directAddr,
+      serial: serial,
+      home: widget.state.backend.androidHome,
+      onError: (message) {
+        if (mounted) {
+          setState(() {
+            _streaming = false;
+            _streamTextureId = null;
+            _streamError = message;
+          });
+        }
+      },
+    );
+    if (!mounted) return;
+    if (id == null) {
+      setState(() {
+        _streaming = false;
+        _streamTextureId = null;
+        _streamError = 'Could not start the live view. Is the backend still running?';
+      });
+    } else {
+      setState(() => _streamTextureId = id);
+      widget.state.log('Live view started');
+    }
+  }
+
+  /// Stop the Android live view.
+  Future<void> _stopAndroidMirror() async {
+    await _stream.stop();
+    if (mounted) {
+      setState(() {
+        _streaming = false;
+        _streamTextureId = null;
+      });
+      widget.state.log('Live view stopped');
+    }
+  }
+
+  /// The Android live view card: the headset display in a 16:9 frame,
+  /// decoded on this device. View only, about a second behind.
+  Widget _androidLiveCard(String? serial) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(children: [
+          if (_streamTextureId != null)
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Texture(textureId: _streamTextureId!),
+              ),
+            )
+          else
+            Icon(_streaming ? Icons.cast_connected : Icons.cast, size: 64, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(height: 12),
+          Text(
+            _streaming ? 'Live view is on.' : 'Live view is off.',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          const Text('Shows the headset screen on this device, about a second behind. View only, you cannot tap or control the headset from here.'),
+          if (_streamError != null) ...[
+            const SizedBox(height: 8),
+            Text(_streamError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: serial == null ? null : (_streaming ? _stopAndroidMirror : _startAndroidMirror),
+            icon: Icon(_streaming ? Icons.stop : Icons.play_arrow),
+            label: Text(_streaming ? 'Stop live view' : 'Start live view'),
+          ),
+        ]),
+      ),
+    );
+  }
+
   @override
   /// Builds the mirror page: start/stop, quality, and record/screenshot cards.
   Widget build(BuildContext context) {
@@ -1386,10 +1489,14 @@ class _MirrorScreenState extends State<MirrorScreen> {
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Mirror the headset screen', style: Theme.of(context).textTheme.headlineSmall),
-        const Text('See what the headset sees, live on this computer. Uses scrcpy: about 35 to 70 ms delay on USB, a bit more on Wi-Fi. No Meta account needed.'),
+        Text(Platform.isAndroid
+            ? 'See what the headset sees, live on this device. About a second behind, view only. No Meta account needed.'
+            : 'See what the headset sees, live on this computer. Uses scrcpy: about 35 to 70 ms delay on USB, a bit more on Wi-Fi. No Meta account needed.'),
         const SizedBox(height: 16),
         if (serial == null)
           const EmptyState(icon: Icons.headset_off, title: 'No headset connected', body: 'Connect your Quest 2 from Home or Devices to mirror it.'),
+        if (Platform.isAndroid) _androidLiveCard(serial),
+        if (!Platform.isAndroid)
         Card(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -1419,6 +1526,9 @@ class _MirrorScreenState extends State<MirrorScreen> {
           ),
         ),
         CardGrid(cards: [
+          // scrcpy quality presets only exist on Linux; the Android
+          // live view runs at a fixed 1280x720.
+          if (!Platform.isAndroid)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -2108,7 +2218,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('About', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 8),
-                  const Text('ReOculus 0.2.33. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
+                  const Text('ReOculus 0.2.34. A Quest 2 and Quest 1 companion for Linux and Android. No account, no ads, no analytics. Everything runs on this computer. Use it at your own risk, I am not responsible for anything that happens.'),
                   const Text('Linux first, Quest 2 first: this app is how you use your Quest on Linux, with no Windows and no Meta account needed.'),
                   const Text('Meta ends Quest 2 feature updates in March 2027 and security patches in December 2027. This app keeps working offline after that.'),
                   const Text('Sideloading uses Meta\'s official Developer Mode. Only install apps you own or that the developer gives away freely.'),

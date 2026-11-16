@@ -18,6 +18,15 @@ abstract class BackendService {
   // ---- Devices ----
   /// Short name for this backend ("Real backend"). Shown in Setup.
   String get label;
+  /// Path of the questctl binary this backend spawns. The Android
+  /// live mirror spawns it directly for the raw H.264 stream.
+  String get cliPath;
+  /// Android only: the headset's Wi-Fi address for the direct
+  /// transport. Null on Linux and before the first Android connect.
+  String? get directAddr;
+  /// Android only: the app's files dir, passed to questctl as HOME.
+  /// Null on Linux.
+  String? get androidHome;
   /// Every headset adb can see right now, USB and Wi-Fi. Empty list
   /// when none is connected, never null.
   Future<List<QuestDevice>> listDevices();

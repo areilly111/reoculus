@@ -183,6 +183,43 @@ pub fn mirror(t: &dyn AdbTransport, serial: &str, preset: &str) -> Result<Mirror
     })
 }
 
+/// Stream the headset display as raw H.264 (Annex B) to `out`, for
+/// the Android live view. Runs `screenrecord --output-format=h264 -`
+/// in a loop: screenrecord caps at 180 s per run, and each run starts
+/// with SPS/PPS/IDR, so the decoder re-syncs after every restart.
+/// Returns when the reader goes away (the callback stops the stream)
+/// or the transport fails (the headset disconnected). View only, no
+/// input: the tablet shows the headset screen about a second behind.
+pub fn mirror_stream(
+    t: &dyn AdbTransport,
+    serial: &str,
+    out: &mut dyn std::io::Write,
+) -> Result<()> {
+    let target = Target::serial(serial);
+    let cmd = "screenrecord --output-format=h264 --size 1280x720 --bit-rate 8000000 --time-limit 180 -";
+    loop {
+        let mut stopped = false;
+        let code = t.shell_stream(&target, cmd, &mut |chunk| {
+            match out.write_all(chunk).and_then(|_| out.flush()) {
+                Ok(()) => true,
+                Err(_) => {
+                    stopped = true;
+                    false
+                }
+            }
+        })?;
+        if stopped {
+            return Ok(());
+        }
+        if code != 0 {
+            return Err(Error(format!(
+                "screenrecord exited with code {code} (is the headset awake?)"
+            )));
+        }
+        // screenrecord finished its 180 s; start it again.
+    }
+}
+
 /// PIDs of scrcpy processes mirroring this serial, found by
 /// scanning /proc for a scrcpy command line naming the serial.
 fn scrcpy_pids(serial: &str) -> Result<Vec<i32>> {

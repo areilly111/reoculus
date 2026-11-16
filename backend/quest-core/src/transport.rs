@@ -130,6 +130,23 @@ pub trait AdbTransport {
     fn name(&self) -> &'static str;
     fn list_devices(&self) -> Result<Vec<Device>>;
     fn shell(&self, target: &Target, cmd: &str) -> Result<CmdOutput>;
+    /// Stream a shell command's stdout bytes as they arrive, calling
+    /// `on_chunk` for each chunk, until the command ends. Returns the
+    /// remote exit code. The callback returns false to stop the stream
+    /// early (the remote command is killed); transport errors
+    /// propagate as Err. Used by the Android live mirror, which feeds
+    /// raw H.264 to a decoder as it arrives.
+    fn shell_stream(
+        &self,
+        target: &Target,
+        cmd: &str,
+        on_chunk: &mut dyn FnMut(&[u8]) -> bool,
+    ) -> Result<i32> {
+        let _ = (target, cmd, on_chunk);
+        Err(Error(
+            "shell streaming is not implemented for this transport".into(),
+        ))
+    }
     /// Binary-safe: no PTY, no CR/LF mangling (used for screencap).
     fn exec_out(&self, target: &Target, argv: &[&str]) -> Result<Vec<u8>>;
     fn push(&self, target: &Target, local: &Path, remote: &str) -> Result<()>;
@@ -342,6 +359,47 @@ impl AdbTransport for AdbBinaryTransport {
     fn shell(&self, target: &Target, cmd: &str) -> Result<CmdOutput> {
         let out = self.run_scoped(target, &["shell", cmd], None)?;
         Ok(Self::out_to_cmd(out))
+    }
+
+    fn shell_stream(
+        &self,
+        target: &Target,
+        cmd: &str,
+        on_chunk: &mut dyn FnMut(&[u8]) -> bool,
+    ) -> Result<i32> {
+        let scope = self.scoped(target);
+        let mut full: Vec<String> = scope;
+        full.extend(["shell".to_string(), cmd.to_string()]);
+        let mut child = std::process::Command::new(&self.adb)
+            .args(&full)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| Error(format!("failed to run adb ({}): {e}", self.adb.display())))?;
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| Error("adb gave no stdout to stream".into()))?;
+        let mut buf = [0u8; 64 * 1024];
+        let mut stopped = false;
+        use std::io::Read;
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) => break, // EOF: the remote command ended.
+                Ok(n) => {
+                    if !on_chunk(&buf[..n]) {
+                        stopped = true;
+                        break;
+                    }
+                }
+                Err(e) => return Err(Error(format!("reading adb stdout: {e}"))),
+            }
+        }
+        if stopped {
+            let _ = child.kill();
+        }
+        let status = child.wait().map_err(Error::from)?;
+        Ok(status.code().unwrap_or(-1))
     }
 
     fn exec_out(&self, target: &Target, argv: &[&str]) -> Result<Vec<u8>> {
@@ -582,6 +640,43 @@ impl DirectSession {
         })
     }
 
+    /// Stream a shell command's stdout frames as they arrive. The
+    /// callback returns false to stop early (the remote command is
+    /// killed by closing the channel); returns the remote exit code.
+    fn shell_stream(
+        &mut self,
+        cmd: &str,
+        on_chunk: &mut dyn FnMut(&[u8]) -> bool,
+    ) -> Result<i32> {
+        let cmd = cmd.to_string();
+        self.rt.block_on(async {
+            let mut rx = vec![0u8; 1024 * 1024];
+            let mut shell = libadb::shell::v2::open(&mut self.conn, &cmd, &mut rx)
+                .await
+                .map_err(|e| Error(format!("direct shell failed: {e}")))?;
+            loop {
+                match shell.read_frame().await {
+                    Ok(libadb::shell::v2::Frame::Stdout(b)) => {
+                        if !on_chunk(&b) {
+                            let _ = shell.close().await;
+                            return Ok(0);
+                        }
+                    }
+                    Ok(libadb::shell::v2::Frame::Stderr(_)) => {}
+                    Ok(libadb::shell::v2::Frame::Exit(code)) => {
+                        let _ = shell.close().await;
+                        return Ok(code as i32);
+                    }
+                    Ok(libadb::shell::v2::Frame::Other { .. }) => {}
+                    Err(e) => {
+                        let _ = shell.close().await;
+                        return Err(Error(format!("direct shell failed: {e}")));
+                    }
+                }
+            }
+        })
+    }
+
     /// Binary-clean `exec:` (used for screencap). Output buffer is
     /// 16 MiB, enough for a Quest display capture.
     fn exec_out(&mut self, cmd: &str) -> Result<Vec<u8>> {
@@ -619,6 +714,16 @@ impl AdbTransport for DirectTransport {
     fn shell(&self, target: &Target, cmd: &str) -> Result<CmdOutput> {
         let addr = Self::addr(target)?;
         Self::shell_direct(&addr, cmd)
+    }
+
+    fn shell_stream(
+        &self,
+        target: &Target,
+        cmd: &str,
+        on_chunk: &mut dyn FnMut(&[u8]) -> bool,
+    ) -> Result<i32> {
+        let addr = Self::addr(target)?;
+        DirectSession::connect(&addr)?.shell_stream(cmd, on_chunk)
     }
 
     fn exec_out(&self, target: &Target, argv: &[&str]) -> Result<Vec<u8>> {

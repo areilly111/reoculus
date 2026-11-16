@@ -205,6 +205,9 @@ class FakeBackend implements BackendService {
     if (name == #appIcon) return Future<AppIcon?>.value(null);
     if (name == #libraryIcon) return Future<AppIcon?>.value(null);
     if (name == #label) return 'Fake backend';
+    if (name == #cliPath) return '';
+    if (name == #directAddr) return null;
+    if (name == #androidHome) return null;
     if (name == #scrcpyAvailable) return Future<bool>.value(false);
     if (name == #listFiles) return Future<List<QuestFile>>.value(_files);
     if (name == #listGallery) return Future<List<GalleryEntry>>.value(_gallery);
