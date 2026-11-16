@@ -5,6 +5,11 @@ before you change code. The short version: edit in the VM repo, verify with
 the tests, commit, sync lean to the PC, build the AppImage on the PC,
 build the APK in the VM, install both on hardware, and only then push.
 
+For Android-only work, read `docs/BUILDING-ANDROID.md` instead: it is
+the standalone Android build and fix guide (questctl cross-compile, APK
+build, signing, installing, the mirror pipeline, and the tablet
+diagnostics). This file covers the whole project and the Linux side.
+
 ## The two machines and the two repos
 
 - **This VM** holds the working repo at `~/workspace/quest-companion/`.
