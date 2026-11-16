@@ -527,9 +527,13 @@ AppState _state({bool quest1 = false, bool twoDevices = false, bool steamvr = fa
   // Normally refreshDevices fills this in from the backend; the
   // golden pumps set the device directly, so set it here too.
   state.deviceInfo = quest1 ? _deviceInfoQuest1 : _deviceInfo;
-  state.log('Lorem ipsum dolor sit amet');
-  state.log('Dolor sit amet, consectetur');
-  state.log('Sed do eiusmod tempor');
+  // The log timestamps are pinned so the Logs golden renders the
+  // same time on every run (it used to stamp DateTime.now() and
+  // fail whenever the minute changed).
+  final t = DateTime(2026, 11, 15, 22, 38, 13);
+  state.log('Lorem ipsum dolor sit amet', at: t);
+  state.log('Dolor sit amet, consectetur', at: t);
+  state.log('Sed do eiusmod tempor', at: t);
   return state;
 }
 

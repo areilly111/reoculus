@@ -1015,6 +1015,10 @@ enum DeviceCmd {
         /// (the PC live view); the Android app passes 4 Mbps.
         #[arg(long, default_value_t = 8000000)]
         bit_rate: u32,
+        /// Stream size, e.g. 1280x720. The default is the PC live
+        /// view size; the Android app passes 960x540.
+        #[arg(long, default_value = "1280x720")]
+        size: String,
     },
     /// Record the headset screen in 180 s segments until killed:
     /// long recordings without the 3-minute cap. Each finished
@@ -1900,7 +1904,7 @@ fn logcat_follow(serial: &str) -> ExitCode {
 }
 
 /// `device mirror-stream` writes raw H.264 to stdout until killed.
-fn mirror_stream(cli: &Cli, serial: &str, bit_rate: u32) -> ExitCode {
+fn mirror_stream(cli: &Cli, serial: &str, bit_rate: u32, size: &str) -> ExitCode {
     let kind = match TransportKind::from_str(&cli.transport) {
         Ok(k) => k,
         Err(e) => {
@@ -1916,7 +1920,7 @@ fn mirror_stream(cli: &Cli, serial: &str, bit_rate: u32) -> ExitCode {
         }
     };
     let mut out = std::io::stdout().lock();
-    match media::mirror_stream(t.as_ref(), serial, bit_rate, &mut out) {
+    match media::mirror_stream(t.as_ref(), serial, bit_rate, size, &mut out) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
@@ -1967,8 +1971,13 @@ fn main() -> ExitCode {
                 return logcat_follow(serial);
             }
         }
-        if let DeviceCmd::MirrorStream { serial, bit_rate } = &a.cmd {
-            return mirror_stream(&cli, serial, *bit_rate);
+        if let DeviceCmd::MirrorStream {
+            serial,
+            bit_rate,
+            size,
+        } = &a.cmd
+        {
+            return mirror_stream(&cli, serial, *bit_rate, size);
         }
         if let DeviceCmd::RecordLoop { serial, dir } = &a.cmd {
             return record_loop(&cli, serial, dir);

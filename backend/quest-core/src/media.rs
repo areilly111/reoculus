@@ -96,16 +96,22 @@ pub fn logcat_dump(t: &dyn AdbTransport, serial: &str) -> Result<Vec<String>> {
 /// The bitrate is the caller's choice: 8 Mbps on the PC (perfect
 /// there, do not touch it) and 4 Mbps on Android, where the tablet
 /// gets the stream over two Wi-Fi hops and the lower rate glitches
-/// less while still looking good at 1280x720.
+/// less while still looking good at 1280x720. The size is the
+/// caller's choice too: 1280x720 on the PC, 960x540 on Android.
+/// The tablet stayed blocky at 720p at both 8 and 4 Mbps while the
+/// PC was clean at 8, so the tablet gets fewer pixels: the same
+/// 4 Mbps spread over half the pixels, and half the data to lose
+/// on the link.
 pub fn mirror_stream(
     t: &dyn AdbTransport,
     serial: &str,
     bit_rate: u32,
+    size: &str,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     let target = Target::serial(serial);
     let cmd = format!(
-        "screenrecord --output-format=h264 --size 1280x720 --bit-rate {bit_rate} --time-limit 180 -"
+        "screenrecord --output-format=h264 --size {size} --bit-rate {bit_rate} --time-limit 180 -"
     );
     loop {
         let mut stopped = false;

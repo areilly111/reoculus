@@ -25,8 +25,11 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "create" -> {
                         try {
+                            val args = call.arguments as? Map<*, *>
+                            val width = (args?.get("width") as? Number)?.toInt() ?: 1280
+                            val height = (args?.get("height") as? Number)?.toInt() ?: 720
                             val decoder = H264Decoder(flutterEngine.renderer)
-                            val id = decoder.create()
+                            val id = decoder.create(width, height)
                             h264?.release()
                             h264 = decoder
                             result.success(id)

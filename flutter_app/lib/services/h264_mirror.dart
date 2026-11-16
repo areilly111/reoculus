@@ -54,6 +54,8 @@ class H264Mirror {
     required String? directAddr,
     required String serial,
     required int bitRate,
+    required int width,
+    required int height,
     String? home,
     required void Function(String message) onError,
   }) async {
@@ -61,7 +63,10 @@ class H264Mirror {
     _stopping = false;
     _stderr.clear();
     try {
-      final id = await _channel.invokeMethod<int>('create');
+      final id = await _channel.invokeMethod<int>('create', {
+        'width': width,
+        'height': height,
+      });
       if (id == null) return null;
       _textureId = id;
     } catch (_) {
@@ -78,6 +83,8 @@ class H264Mirror {
       serial,
       '--bit-rate',
       '$bitRate',
+      '--size',
+      '${width}x$height',
     ]);
     try {
       _proc = await Process.start(

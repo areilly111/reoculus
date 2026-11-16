@@ -163,8 +163,10 @@ class AppState extends ChangeNotifier {
 
   // ---- Activity log ----
   /// Add one line to the activity log, newest first, capped at 200 lines.
-  void log(String entry) {
-    final now = DateTime.now();
+  /// [at] pins the timestamp (the golden tests pin it so the Logs
+  /// screen renders the same time on every run); it defaults to now.
+  void log(String entry, {DateTime? at}) {
+    final now = at ?? DateTime.now();
     final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
     activity.insert(0, '$time  $entry');
     if (activity.length > 200) activity.removeLast();

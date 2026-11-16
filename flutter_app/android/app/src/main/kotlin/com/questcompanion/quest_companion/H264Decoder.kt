@@ -31,11 +31,11 @@ class H264Decoder(private val textures: TextureRegistry) {
         private const val MAX_PENDING = 512 * 1024
     }
 
-    /** Create the decoder and texture. Returns the Flutter texture id. */
-    fun create(): Long {
+    /** Create the decoder and texture for a stream of this size. Returns the Flutter texture id. */
+    fun create(width: Int, height: Int): Long {
         val entry = textures.createSurfaceTexture()
         val surface = Surface(entry.surfaceTexture())
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
         val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         codec.configure(format, surface, null, 0)
         codec.start()
