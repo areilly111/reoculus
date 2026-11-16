@@ -37,6 +37,6 @@ target_link_libraries(${BINARY_NAME} PRIVATE
   /usr/lib/x86_64-linux-gnu/libavcodec.a
   /usr/lib/x86_64-linux-gnu/libavutil.a
   /usr/lib/x86_64-linux-gnu/libswscale.a
-  m z pthread)
+  m z pthread X11)
 
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
