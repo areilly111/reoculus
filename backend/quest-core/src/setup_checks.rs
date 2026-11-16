@@ -3,10 +3,9 @@
 //!
 //! The Setup screen used to be four manual checkboxes with
 //! hardcoded starting values, and two of them even shared one
-//! variable, so ticking one ticked the other. Anthony did the
-//! udev step (installed android-sdk-platform-tools-common) and
-//! the box still showed undone. This module answers each item
-//! from the real system state:
+//! variable, so ticking one ticked the other. The udev step was
+//! done (android-sdk-platform-tools-common installed) and the box
+//! still showed undone. This module answers each item from the
 //!
 //! * Developer account: cannot be checked, it lives on Meta's
 //!   website and ReOculus never signs in. Reported as unknown,

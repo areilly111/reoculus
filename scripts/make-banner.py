@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compose the ReOculus banner from the REAL Quest 2 product photo.
 
-The hero photo is the real Quest 2 product shot Anthony uploaded,
+The hero photo is the real Quest 2 product shot,
 headset plus both controllers, with genuine transparency (no cleanup
 needed). An earlier photo had its checkerboard baked into the pixels;
 clean_photo() below strips that one if it is ever used again, but the

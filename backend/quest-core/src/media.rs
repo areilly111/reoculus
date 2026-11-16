@@ -92,20 +92,24 @@ pub fn logcat_dump(t: &dyn AdbTransport, serial: &str) -> Result<Vec<String>> {
 /// with SPS/PPS/IDR, so the decoder re-syncs after every restart.
 /// Returns when the reader goes away (the callback stops the stream)
 /// or the transport fails (the headset disconnected). View only, no
-/// input: the tablet shows the headset screen about a second behind.
-/// The bitrate is 4 Mbps: 8 Mbps glitched on the tablet over Wi-Fi
-/// (0.2.36), and 4 Mbps at 1280x720 still looks good while halving
-/// the load on the link and the decoder.
+/// input: the app shows the headset screen about a second behind.
+/// The bitrate is the caller's choice: 8 Mbps on the PC (perfect
+/// there, do not touch it) and 4 Mbps on Android, where the tablet
+/// gets the stream over two Wi-Fi hops and the lower rate glitches
+/// less while still looking good at 1280x720.
 pub fn mirror_stream(
     t: &dyn AdbTransport,
     serial: &str,
+    bit_rate: u32,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     let target = Target::serial(serial);
-    let cmd = "screenrecord --output-format=h264 --size 1280x720 --bit-rate 4000000 --time-limit 180 -";
+    let cmd = format!(
+        "screenrecord --output-format=h264 --size 1280x720 --bit-rate {bit_rate} --time-limit 180 -"
+    );
     loop {
         let mut stopped = false;
-        let code = t.shell_stream(&target, cmd, &mut |chunk| {
+        let code = t.shell_stream(&target, &cmd, &mut |chunk| {
             match out.write_all(chunk).and_then(|_| out.flush()) {
                 Ok(()) => true,
                 Err(_) => {

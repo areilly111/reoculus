@@ -1317,6 +1317,7 @@ class _MirrorScreenState extends State<MirrorScreen> {
       cliPath: widget.state.backend.cliPath,
       directAddr: widget.state.backend.directAddr,
       serial: serial,
+      bitRate: Platform.isAndroid ? 4000000 : 8000000,
       home: widget.state.backend.androidHome,
       onError: (message) {
         if (mounted) {

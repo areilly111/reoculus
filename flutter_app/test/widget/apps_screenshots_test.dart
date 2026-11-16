@@ -46,7 +46,7 @@ const _deviceQuest1 = QuestDevice(
 // prove the Home screen folds the USB and Wi-Fi entries into one
 // card when the headset's own Wi-Fi address matches.
 const _deviceWifi = QuestDevice(
-  serial: '192.168.100.112:5555',
+  serial: '192.168.1.42:5555',
   state: 'device',
   model: 'Quest 2',
   headsetModel: 'quest2',
@@ -65,7 +65,7 @@ const _deviceInfo = DeviceInfo(
   batteryHealth: 'Good',
   batteryVoltageMv: 4200,
   densityDpi: 200,
-  wifiIp: '192.168.100.112',
+  wifiIp: '192.168.1.42',
   storageUsedGb: 86,
   storageTotalGb: 112,
   charging: true,
@@ -416,7 +416,7 @@ class FakeBackend implements BackendService {
     if (name == #wivrnHeadsetClient) return Future<String?>.value('26.9');
     if (name == #wivrnAppsList) {
       return Future<List<WivrnApp>>.value(const [
-        WivrnApp(file: 'open-saber.desktop', name: 'Open Saber', exec: '/home/anthony/Downloads/OpenSaber.x86_64', icon: '', launchOptions: '--fullscreen'),
+        WivrnApp(file: 'open-saber.desktop', name: 'Open Saber', exec: '/home/user/Downloads/OpenSaber.x86_64', icon: '', launchOptions: '--fullscreen'),
       ]);
     }
     if (name == #wivrnAppsAdd) return Future<BackendResult>.value(const BackendResult(ok: true, message: 'Open Saber added to the headset launcher.'));

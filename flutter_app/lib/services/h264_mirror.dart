@@ -11,14 +11,17 @@ import 'package:flutter/services.dart';
 /// headset, and screenrecord restarts itself every 3 minutes, so
 /// there is a brief black gap at each restart.
 ///
-/// The feed is paced, not fired per chunk: adb delivers the stream
-/// in bursts over Wi-Fi, and handing every burst straight to the
-/// decoder made the tablet picture glitch. Incoming chunks queue
-/// up and one goes to the decoder every 33 ms, about 30 a second,
-/// which smooths the bursts out. That adds a little latency, on
-/// top of the second the stream already has. The queue is capped
-/// at 90 chunks (about 3 seconds): past that the oldest chunk is
-/// dropped, so a slow decoder can never fall minutes behind.
+/// The feed is paced on Android only, not fired per chunk: adb
+/// delivers the stream in bursts over Wi-Fi, and handing every
+/// burst straight to the decoder made the tablet picture glitch.
+/// Incoming chunks queue up and one goes to the decoder every 33 ms,
+/// about 30 a second, which smooths the bursts out. That adds a
+/// little latency, on top of the second the stream already has. The
+/// queue is capped at 90 chunks (about 3 seconds): past that the
+/// oldest chunk is dropped, so a slow decoder can never fall minutes
+/// behind. On Linux the chunks go straight to the decoder as they
+/// arrive: the PC live view was already perfect that way and is
+/// left alone.
 class H264Mirror {
   static const _channel = MethodChannel('reoculus/h264');
 
@@ -26,6 +29,9 @@ class H264Mirror {
   static const _tick = Duration(milliseconds: 33);
   /// Past this many queued chunks, drop the oldest.
   static const _maxQueued = 90;
+
+  /// Pace the feed (Android only). The PC feeds straight through.
+  final bool _paced = Platform.isAndroid;
 
   Process? _proc;
   int? _textureId;
@@ -47,6 +53,7 @@ class H264Mirror {
     required String cliPath,
     required String? directAddr,
     required String serial,
+    required int bitRate,
     String? home,
     required void Function(String message) onError,
   }) async {
@@ -64,7 +71,14 @@ class H264Mirror {
     if (directAddr != null && directAddr.isNotEmpty) {
       args.addAll(['--transport', 'direct', '--addr', directAddr]);
     }
-    args.addAll(['device', 'mirror-stream', '--serial', serial]);
+    args.addAll([
+      'device',
+      'mirror-stream',
+      '--serial',
+      serial,
+      '--bit-rate',
+      '$bitRate',
+    ]);
     try {
       _proc = await Process.start(
         cliPath,
@@ -77,10 +91,15 @@ class H264Mirror {
     }
     final proc = _proc!;
     _sub = proc.stdout.listen((chunk) {
-      _queue.add(Uint8List.fromList(chunk));
-      if (_queue.length > _maxQueued) _queue.removeAt(0);
+      final bytes = Uint8List.fromList(chunk);
+      if (_paced) {
+        _queue.add(bytes);
+        if (_queue.length > _maxQueued) _queue.removeAt(0);
+      } else {
+        unawaited(_feedDirect(bytes));
+      }
     });
-    _timer = Timer.periodic(_tick, (_) => _feedOne());
+    if (_paced) _timer = Timer.periodic(_tick, (_) => _feedOne());
     proc.stderr.listen((chunk) {
       _stderr.write(String.fromCharCodes(chunk));
     });
@@ -107,6 +126,15 @@ class H264Mirror {
       await _channel.invokeMethod('feed', chunk);
     } catch (_) {}
     _feeding = false;
+  }
+
+  /// Feed one chunk straight to the decoder (Linux path: the PC
+  /// live view feeds chunks as they arrive, no queue, no timer).
+  Future<void> _feedDirect(Uint8List chunk) async {
+    if (_textureId == null) return;
+    try {
+      await _channel.invokeMethod('feed', chunk);
+    } catch (_) {}
   }
 
   Future<void> stop() async {

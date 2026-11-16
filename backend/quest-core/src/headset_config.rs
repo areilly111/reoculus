@@ -6,7 +6,7 @@
 //! # ReOculus headset config. Written by ReOculus, read on connect.
 //! # Edit the name line to rename this headset.
 //! [headset]
-//! name=Anthony's Quest
+//! name=My Quest
 //! ```
 //!
 //! The file holds ONLY the custom name. Everything else (model,
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn round_trip() {
         let cfg = HeadsetConfig {
-            name: Some("Anthony's Quest".to_string()),
+            name: Some("My Quest".to_string()),
         };
         let back = parse(&render(&cfg));
         assert_eq!(back.name, cfg.name);

@@ -387,27 +387,27 @@ mod tests {
     fn desktop_content_has_the_category() {
         let c = desktop_content(
             "Open Saber",
-            "/home/anthony/Downloads/OpenSaber.x86_64",
+            "/home/user/Downloads/OpenSaber.x86_64",
             "--fullscreen",
             "",
             "A free VR saber game.",
         );
         assert!(c.contains("Name=Open Saber"));
-        assert!(c.contains("Exec=/home/anthony/Downloads/OpenSaber.x86_64 --fullscreen"));
+        assert!(c.contains("Exec=/home/user/Downloads/OpenSaber.x86_64 --fullscreen"));
         assert!(c.contains("Icon=applications-games"));
         assert!(c.contains("Comment=A free VR saber game."));
         assert!(c.contains("X-WiVRn-VR"));
         let (name, exec, opts, icon, comment, cats) = parse_desktop(&c).unwrap();
         assert_eq!(name, "Open Saber");
-        assert_eq!(exec, "/home/anthony/Downloads/OpenSaber.x86_64");
+        assert_eq!(exec, "/home/user/Downloads/OpenSaber.x86_64");
         assert_eq!(opts, "--fullscreen");
         assert_eq!(icon, "applications-games");
         assert_eq!(comment, "A free VR saber game.");
         assert!(cats.split(';').any(|x| x == "X-WiVRn-VR"));
         // No options, no comment, custom icon: the lines drop out.
-        let c2 = desktop_content("Plain", "/bin/true", "", "/home/anthony/icon.png", "");
+        let c2 = desktop_content("Plain", "/bin/true", "", "/home/user/icon.png", "");
         assert!(c2.contains("Exec=/bin/true\n"));
-        assert!(c2.contains("Icon=/home/anthony/icon.png"));
+        assert!(c2.contains("Icon=/home/user/icon.png"));
         assert!(!c2.contains("Comment="));
         let (_, _, opts2, _, comment2, _) = parse_desktop(&c2).unwrap();
         assert_eq!(opts2, "");

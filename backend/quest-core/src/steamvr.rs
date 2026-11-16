@@ -1,6 +1,6 @@
 //! SteamVR + Steam Link as an experimental second PC VR runtime.
 //!
-//! The simplified design Anthony picked (2026-11-14, from the
+//! The simplified design picked (2026-11-14, from the
 //! research report `steamvr-runtime-picker-reoculus-20261114-0254`):
 //! ReOculus only starts SteamVR on the PC. The user opens the free
 //! Steam Link app on the Quest and connects to the PC; SteamVR sees
@@ -816,10 +816,10 @@ mod tests {
 
     #[test]
     fn parse_library_paths_vdf() {
-        let vdf = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/anthony/.local/share/Steam\"\n\t}\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"/mnt/games/Steam\"\n\t}\n}\n";
+        let vdf = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/user/.local/share/Steam\"\n\t}\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"/mnt/games/Steam\"\n\t}\n}\n";
         assert_eq!(
             parse_library_paths(vdf),
-            vec!["/home/anthony/.local/share/Steam".to_string(), "/mnt/games/Steam".to_string()]
+            vec!["/home/user/.local/share/Steam".to_string(), "/mnt/games/Steam".to_string()]
         );
     }
 

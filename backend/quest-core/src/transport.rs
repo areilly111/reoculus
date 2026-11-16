@@ -893,7 +893,7 @@ mod tests {
 
     #[test]
     fn parse_devices_quest2() {
-        let text = "List of devices attached\n1WMHHB630X1464\tdevice product:hollywood model:Quest_2 device:hollywood transport_id:2\n";
+        let text = "List of devices attached\n1WMHHB630X0002\tdevice product:hollywood model:Quest_2 device:hollywood transport_id:2\n";
         let devices = parse_devices_output(text);
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].model.as_deref(), Some("Quest 2"));
