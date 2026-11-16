@@ -38,7 +38,7 @@ typedef struct {
   GMutex mutex;
 } H264Texture;
 
-G_DEFINE_TYPE(H264Texture, h264_texture, FL_TYPE_PIXEL_BUFFER_TEXTURE)
+G_DEFINE_TYPE(H264Texture, h264_texture, fl_pixel_buffer_texture_get_type())
 
 static gboolean h264_texture_copy_pixels(FlPixelBufferTexture* texture,
                                          const uint8_t** buffer,

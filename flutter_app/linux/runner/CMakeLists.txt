@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
-project(runner LANGUAGES CXX)
+# C is enabled as well as CXX: the H.264 decoder plugin
+# (h264_decoder_plugin.c) is plain C.
+project(runner LANGUAGES C CXX)
 
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer
@@ -28,9 +30,13 @@ target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 # ffmpeg statically, so the AppImage does not need ffmpeg installed
 # on the machine it runs on. The static archives only pull in the
 # objects the decoder actually uses, so this adds a few MB, not the
-# whole of libavcodec.
-pkg_check_modules(FFMPEG REQUIRED STATIC libavcodec libavutil libswscale)
-target_include_directories(${BINARY_NAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
-target_link_libraries(${BINARY_NAME} PRIVATE ${FFMPEG_STATIC_LIBRARIES} m z pthread)
+# whole of libavcodec. (pkg_check_modules STATIC does not parse on
+# this CMake, so the archive paths are named directly; they live in
+# the ffmpeg -dev packages on the build machine.)
+target_link_libraries(${BINARY_NAME} PRIVATE
+  /usr/lib/x86_64-linux-gnu/libavcodec.a
+  /usr/lib/x86_64-linux-gnu/libavutil.a
+  /usr/lib/x86_64-linux-gnu/libswscale.a
+  m z pthread)
 
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
